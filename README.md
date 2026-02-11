@@ -2,6 +2,14 @@
 
 A production-ready FastAPI backend with SQLAlchemy ORM, Alembic migrations, and PostgreSQL database support.
 
+## Clone this repo - 
+```
+git clone ...repo.git
+```
+asks for username:
+password:
+For password visit https://gist.github.com/kavangajera/ed0a632c27f6076e9854c6231ebe2b8a
+
 ## Table of Contents
 
 - [Project Structure](#project-structure)
