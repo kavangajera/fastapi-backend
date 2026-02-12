@@ -852,5 +852,5 @@ kill -9 <PID>
 [Your License Here]
 
 ## Contributors
-Devarshi Borisagar
-Kavan Gajera
+-kavangajera
+-Devarshi2285
