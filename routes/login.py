@@ -1,16 +1,15 @@
 from fastapi import Depends, HTTPException, Response
-from schemas.phrmacy_owner_schema import Pharmacy_Owner_Schema
-from schemas.login_pharmacy_owner_schema import Login_Pharmacy_Owner_Schema
+from schemas.login_input_pharmacy_owner_schema import Login_Input_Pharmacy_Owner_Schema
 from models.pharmacy_owner import Pharmacy_Owner 
 from core.database import get_db
 from sqlalchemy.orm import Session
 from core.security_schemes import create_access_token,create_refresh_token
 
-async def login(user:Login_Pharmacy_Owner_Schema,response:Response,db:Session=Depends(get_db)):
+async def login(user:Login_Input_Pharmacy_Owner_Schema,response:Response,db:Session=Depends(get_db)):
 
 
     user_from_db:Pharmacy_Owner=db.query(Pharmacy_Owner).filter(
-        Pharmacy_Owner.email==user.username,
+        Pharmacy_Owner.email==user.email,
         Pharmacy_Owner.password_hash==user.input_password
         ).first()
     
