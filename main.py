@@ -3,8 +3,8 @@ import fastapi_swagger_dark as fsd
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
-
-app = FastAPI(docs_url=None)
+from routes import router
+app = FastAPI()
 
 
 app.add_middleware(
@@ -17,8 +17,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-router = APIRouter()
-fsd.install(router)
+# fsd.install(router)
 app.include_router(router)
 
 @app.get("/")
