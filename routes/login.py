@@ -4,17 +4,39 @@ from models.pharmacy_owner import Pharmacy_Owner
 from core.database import get_db
 from sqlalchemy.orm import Session
 from core.security_schemes import create_access_token,create_refresh_token
+from argon2 import PasswordHasher
+from sqlalchemy.exc import SQLAlchemyError
+from argon2.exceptions import VerifyMismatchError, InvalidHash
+
+
 
 async def login(user:Login_Input_Pharmacy_Owner_Schema,response:Response,db:Session=Depends(get_db)):
 
+    ph=PasswordHasher()
 
-    user_from_db:Pharmacy_Owner=db.query(Pharmacy_Owner).filter(
-        Pharmacy_Owner.email==user.email,
-        Pharmacy_Owner.password_hash==user.input_password
+    try:
+        user_from_db:Pharmacy_Owner=db.query(Pharmacy_Owner).filter(
+            Pharmacy_Owner.email==user.email,
         ).first()
+
+        try:
+            ph.verify(user_from_db.password_hash, user.input_password)
+            print("Password is correct!")
+        except VerifyMismatchError:
+            print("Password is incorrect.")
     
-    if not user_from_db:
-        raise HTTPException(status_code=400, detail="Invalid credentials")
+        if not user_from_db:
+            raise HTTPException(status_code=400, detail="Invalid credentials")
+    
+    except SQLAlchemyError as e:
+       db.rollback()            # VERY IMPORTANT
+       print("Database error:", str(e))
+       raise HTTPException(status_code=500, detail="Database insert failed")
+   
+    except Exception as e:
+       db.rollback()
+       print("Unexpected error:", str(e))
+       raise HTTPException(status_code=500, detail="Something went wrong")
     
     access_token=create_access_token(
         {
