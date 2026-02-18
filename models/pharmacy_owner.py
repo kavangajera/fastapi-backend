@@ -1,6 +1,7 @@
 from sqlalchemy import String, Integer
 from sqlalchemy.orm import Mapped, mapped_column
 from core.database import Base
+from core.enums import UserRole
 class Pharmacy_Owner(Base):
     __tablename__="pharmacy_owner"
 
@@ -13,4 +14,5 @@ class Pharmacy_Owner(Base):
     # NEEDS TO UPDATE AS PER USA
     contact_number : Mapped[str] = mapped_column(String(10))
     password_hash : Mapped[str] = mapped_column(String(255))
+    role:Mapped[UserRole] = mapped_column(default=UserRole.PHARMACY_OWNER)
 
