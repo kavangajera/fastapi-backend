@@ -1,5 +1,7 @@
 from datetime import datetime,timedelta, timezone
-from jose import jwt,JWTError
+from fastapi import HTTPException
+from jose import ExpiredSignatureError, jwt,JWTError
+from schemas.system_internal_pharmacy_owner_schema import System_Internal_Pharmacy_Owner_Schema
 
 SECRET_KEY = "CHANGE_THIS_SUPER_SECRET"
 ALGORITHM = "HS256"
@@ -18,6 +20,13 @@ def create_refresh_token(data:dict):
     to_encode.update({"expire":int(time_expire.timestamp())})
     return jwt.encode(to_encode,SECRET_KEY,algorithm=ALGORITHM)
 
-def verify_access_token(token:str):
-    data=jwt.decode(token,SECRET_KEY,ALGORITHM)
+async def verify_access_token(token:str):
+    
+    try:
+        data=await jwt.decode(token,SECRET_KEY,ALGORITHM)
+        return data
+    except ExpiredSignatureError:
+        print("❌ Token has expired")
+    except Exception as e:
+        raise HTTPException(e)
     

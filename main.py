@@ -4,6 +4,7 @@ from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from routes import router
+from middlewares import auth
 app = FastAPI()
 
 
@@ -18,8 +19,12 @@ app.add_middleware(
 )
 
 # fsd.install(router)
-app.include_router(router)
 
+
+# app.add_middleware(
+#     auth.auth_incoming_req(call_next)
+# )
+app.include_router(router)
 @app.get("/")
 async def welcome():
     return {"message": "Welcome to Queue RX!"}
