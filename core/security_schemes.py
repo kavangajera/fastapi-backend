@@ -2,7 +2,9 @@ from datetime import datetime,timedelta, timezone
 from fastapi import HTTPException
 from jose import ExpiredSignatureError, jwt,JWTError
 from schemas.system_internal_pharmacy_owner_schema import System_Internal_Pharmacy_Owner_Schema
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
+security = HTTPBearer()
 SECRET_KEY = "CHANGE_THIS_SUPER_SECRET"
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES=5
