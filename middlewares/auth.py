@@ -8,7 +8,6 @@ from schemas.system_internal_pharmacy_owner_schema import System_Internal_Pharma
 from services.pharmacy_owner import get_pharmacy_owner_by_id
 from fastapi import Depends, HTTPException
 
-app = FastAPI()
 
 def auth_incoming_req(req:Request,db=Depends(get_db),credentials: HTTPAuthorizationCredentials = Depends(security_schemes.security)):
 
