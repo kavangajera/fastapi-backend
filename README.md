@@ -2,7 +2,7 @@
 
 A production-ready FastAPI backend with SQLAlchemy ORM, Alembic migrations, and PostgreSQL database support.
 
-## Clone this repo :- 
+## Clone this repo :-
 ```
 git clone ...repo.git
 ```
