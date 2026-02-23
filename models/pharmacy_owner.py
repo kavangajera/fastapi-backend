@@ -1,6 +1,6 @@
 from sqlalchemy import String, Integer
 from sqlalchemy.orm import Mapped, mapped_column
-from core.database import Base
+from database import Base
 from core.enums import UserRole
 class Pharmacy_Owner(Base):
     __tablename__="pharmacy_owner"

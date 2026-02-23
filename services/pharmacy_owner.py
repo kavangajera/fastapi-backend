@@ -2,7 +2,7 @@ from fastapi import Depends, HTTPException, Response
 from core.security_schemes import create_access_token, create_refresh_token
 from models.pharmacy_owner import Pharmacy_Owner 
 from sqlalchemy.orm import Session
-from core.database import get_db
+from database import get_db
 from sqlalchemy.exc import SQLAlchemyError
 from argon2 import PasswordHasher
 from schemas.login_input_pharmacy_owner_schema import Login_Input_Pharmacy_Owner_Schema
@@ -95,7 +95,7 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
 
     return {"access_token": access_token}
 
-async def get_pharmacy_owner_by_id(id:str,db):
+def get_pharmacy_owner_by_id(id:str,db):
     
     try:
         user_from_db:Pharmacy_Owner=db.query(Pharmacy_Owner).filter(
@@ -104,8 +104,9 @@ async def get_pharmacy_owner_by_id(id:str,db):
 
         return System_Internal_Pharmacy_Owner_Schema(
             owner_id=user_from_db.owner_id,
+            # email=user_from_db.email,
             username=user_from_db.username,
-            contact_number=user_from_db.contact_number,
+            # contact_number=user_from_db.contact_number,
             role=user_from_db.role
         )
     

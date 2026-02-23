@@ -1,9 +1,10 @@
 from fastapi import Depends, HTTPException, Request, Response
-from core.database import get_db
+from database import get_db
 from schemas.login_input_pharmacy_owner_schema import Login_Input_Pharmacy_Owner_Schema
 from schemas.signup_input_phrmacy_owner_schema import Signup_Input_Pharmacy_Owner_Schema
 from schemas.signup_output_pharmacy_owner_schema import Signup_Output_Pharmacy_Owner_Schema 
 from services import pharmacy_owner
+from middlewares import auth
 
 async def create_pharmacy_owner(user:Signup_Input_Pharmacy_Owner_Schema,db=Depends(get_db)):
     
@@ -26,6 +27,6 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
       print("Unexpected error:", str(e))
       raise HTTPException(status_code=500, detail="Something went wrong")
 
-async def dummy_protacted_route(req:Request):
+async def dummy_protacted_route(req:Request,user=Depends(auth.auth_incoming_req)):
    
-   return req.state.user
+   return user

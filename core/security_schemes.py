@@ -20,10 +20,10 @@ def create_refresh_token(data:dict):
     to_encode.update({"expire":int(time_expire.timestamp())})
     return jwt.encode(to_encode,SECRET_KEY,algorithm=ALGORITHM)
 
-async def verify_access_token(token:str):
+def verify_access_token(token:str):
     
     try:
-        data=await jwt.decode(token,SECRET_KEY,ALGORITHM)
+        data=jwt.decode(token,SECRET_KEY,ALGORITHM)
         return data
     except ExpiredSignatureError:
         print("❌ Token has expired")
