@@ -17,13 +17,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# fsd.install(router)
-
-
-# app.add_middleware(
-#     auth.auth_incoming_req(call_next)
-# )
 app.include_router(router)
 @app.get("/")
 async def welcome():
