@@ -89,7 +89,7 @@ uv sync
 
 ```bash
 # macOS/Linux
-source .venv/bin/activate
+    source .venv/bin/activate
 
 # Windows
 .venv\Scripts\activate

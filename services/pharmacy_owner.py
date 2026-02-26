@@ -1,6 +1,7 @@
 from fastapi import Depends, HTTPException, Response
 from core.security_schemes import create_access_token, create_refresh_token
 from models.pharmacy_owner import Pharmacy_Owner 
+from models.refresh_token import RefreshToken
 from sqlalchemy.orm import Session
 from database import get_db
 from sqlalchemy.exc import SQLAlchemyError
@@ -63,6 +64,39 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
         if not user_from_db:
             raise HTTPException(status_code=400, detail="Invalid credentials")
     
+    
+    
+        access_token=create_access_token(
+        {
+            "username":user_from_db.username,
+            "owner_id":user_from_db.owner_id
+         })
+        refresh_token=create_refresh_token( {
+            "username":user_from_db.username,
+            "owner_id":user_from_db.owner_id
+         })
+        
+        refresh_token_for_db:RefreshToken=RefreshToken(
+            owner_id=user_from_db.owner_id,
+            token=ph.hash(refresh_token),
+
+        )
+        refresh_token_for_db.user=user_from_db
+
+        db.add(refresh_token_for_db)
+        db.commit()
+        db.refresh(refresh_token_for_db)
+    
+
+        response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        secure=False,          # True in production (HTTPS)
+        samesite="lax"
+        )
+
+        print("🍪 Refresh token stored in cookie")
     except SQLAlchemyError as e:
        db.rollback()            # VERY IMPORTANT
        print("Database error:", str(e))
@@ -72,28 +106,9 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
        db.rollback()
        print("Unexpected error:", str(e))
        raise HTTPException(status_code=500, detail="Something went wrong")
-    
-    access_token=create_access_token(
-        {
-            "username":user_from_db.username,
-            "owner_id":user_from_db.owner_id
-         })
-    refresh_token=create_refresh_token( {
-            "username":user_from_db.username,
-            "owner_id":user_from_db.owner_id
-         })
-
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=False,          # True in production (HTTPS)
-        samesite="lax"
-    )
-
-    print("🍪 Refresh token stored in cookie")
 
     return {"access_token": access_token}
+    
 
 def get_pharmacy_owner_by_id(id:str,db):
     

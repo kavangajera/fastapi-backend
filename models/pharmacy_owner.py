@@ -1,5 +1,5 @@
 from sqlalchemy import String, Integer
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from database import Base
 from core.enums import UserRole
 class Pharmacy_Owner(Base):
@@ -16,3 +16,4 @@ class Pharmacy_Owner(Base):
     password_hash : Mapped[str] = mapped_column(String(255))
     role:Mapped[UserRole] = mapped_column(default=UserRole.PHARMACY_OWNER)
 
+    refresh_tokens = relationship("RefreshToken", back_populates="pharmacy_owner", cascade="all, delete-orphan")

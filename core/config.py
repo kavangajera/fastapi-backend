@@ -13,3 +13,4 @@ class Settings(BaseSettings):
         env_file = ".env"
 
 settings = Settings()
+print("SETTINGS LOADED:", settings.model_dump())
