@@ -28,4 +28,14 @@ def verify_access_token(token:str):
         print("❌ Token has expired")
     except Exception as e:
         raise HTTPException(e)
+
+def verify_refresh_token(refresh_token:str):
+    
+    try:
+        data=jwt.decode(refresh_token,settings.SECRET_KEY,settings.ALGORITHM)
+        return data
+    except ExpiredSignatureError:
+        print("❌ Refresh Token has expired")
+    except Exception as e:
+        raise HTTPException(e)
     

@@ -28,5 +28,8 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
       raise HTTPException(status_code=500, detail="Something went wrong")
 
 async def dummy_protacted_route(req:Request,user=Depends(auth.auth_incoming_req)):
-   
    return user
+
+
+async def renew_access_token(req:Request,db=Depends(get_db)):
+   return pharmacy_owner.generate_new_access_token(req,db)

@@ -17,3 +17,4 @@ class Pharmacy_Owner(Base):
     role:Mapped[UserRole] = mapped_column(default=UserRole.PHARMACY_OWNER)
 
     refresh_tokens = relationship("RefreshToken", back_populates="pharmacy_owner", cascade="all, delete-orphan")
+    pharmacies=relationship("Pharmacy" , back_populates="pharmacy_owner", cascade="all, delete-orphan")

@@ -1,9 +1,11 @@
-from fastapi import Depends, HTTPException, Response
-from core.security_schemes import create_access_token, create_refresh_token
+import ast
+
+from fastapi import Depends, HTTPException, Request, Response
+from core.security_schemes import create_access_token, create_refresh_token, verify_refresh_token
 from models.pharmacy_owner import Pharmacy_Owner 
 from models.refresh_token import RefreshToken
 from sqlalchemy.orm import Session
-from database import get_db
+from database import Base, get_db
 from sqlalchemy.exc import SQLAlchemyError
 from argon2 import PasswordHasher
 from schemas.login_input_pharmacy_owner_schema import Login_Input_Pharmacy_Owner_Schema
@@ -11,8 +13,7 @@ from schemas.signup_input_phrmacy_owner_schema import Signup_Input_Pharmacy_Owne
 from schemas.signup_output_pharmacy_owner_schema import Signup_Output_Pharmacy_Owner_Schema 
 from argon2.exceptions import VerifyMismatchError
 from schemas.system_internal_pharmacy_owner_schema import System_Internal_Pharmacy_Owner_Schema
-
-
+from schemas.token_data_schemas import TokenData
 
 async def create_pharmacy_owner(user:Signup_Input_Pharmacy_Owner_Schema,db:Session):
     ph = PasswordHasher()
@@ -119,9 +120,7 @@ def get_pharmacy_owner_by_id(id:str,db):
 
         return System_Internal_Pharmacy_Owner_Schema(
             owner_id=user_from_db.owner_id,
-            # email=user_from_db.email,
             username=user_from_db.username,
-            # contact_number=user_from_db.contact_number,
             role=user_from_db.role
         )
     
@@ -134,3 +133,23 @@ def get_pharmacy_owner_by_id(id:str,db):
        db.rollback()
        print("Unexpected error:", str(e))
        raise HTTPException(status_code=500, detail="Something went wrong")
+
+def generate_new_access_token(req:Request,db:Session):
+        try:
+            refresh_token=req.cookies.get("refresh_token")
+            data=verify_refresh_token(refresh_token)
+            print(data)
+            token_obj = TokenData(**data)
+            user_from_db:Pharmacy_Owner=db.query(Pharmacy_Owner).filter(
+            Pharmacy_Owner.owner_id==token_obj.owner_id
+            ).first()
+            print(user_from_db)
+            access_token=create_access_token(
+            {
+                "username":user_from_db.username,
+                "owner_id":user_from_db.owner_id
+            })
+            print(data)
+            return {"access_token": access_token}
+        except Exception as e:
+            raise HTTPException(status_code=401, detail=str(e))
