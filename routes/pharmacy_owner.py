@@ -27,7 +27,7 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
       print("Unexpected error:", str(e))
       raise HTTPException(status_code=500, detail="Something went wrong")
 
-async def dummy_protacted_route(req:Request,user=Depends(auth.auth_incoming_req)):
+async def dummy_protacted_route(user=Depends(auth.auth_incoming_req)):
    return user
 
 

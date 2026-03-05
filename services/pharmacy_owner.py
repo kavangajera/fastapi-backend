@@ -55,7 +55,7 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
         user_from_db:Pharmacy_Owner=db.query(Pharmacy_Owner).filter(
             Pharmacy_Owner.email==user.email,
         ).first()
-
+        print(user_from_db)
         try:
             ph.verify(user_from_db.password_hash, user.input_password)
             print("Password is correct!")
@@ -78,12 +78,9 @@ async def login_pharmacy_owner(user:Login_Input_Pharmacy_Owner_Schema,response:R
          })
         
         refresh_token_for_db:RefreshToken=RefreshToken(
-            owner_id=user_from_db.owner_id,
             token=ph.hash(refresh_token),
-
+            pharmacy_owner=user_from_db
         )
-        refresh_token_for_db.user=user_from_db
-
         db.add(refresh_token_for_db)
         db.commit()
         db.refresh(refresh_token_for_db)
