@@ -6,16 +6,16 @@ from database import Base
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id: Mapped[int] = mapped_column(
+    refresh_token_id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
         index=True,
         autoincrement=True
     )
 
-    owner_id: Mapped[int] = mapped_column(
+    user_id: Mapped[int] = mapped_column(
         ForeignKey(
-            "pharmacy_owner.owner_id",
+            "user.user_id",
             ondelete="CASCADE",
             onupdate="CASCADE"
         ),
@@ -27,7 +27,7 @@ class RefreshToken(Base):
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
 
     # Relationship
-    pharmacy_owner = relationship(
-        "Pharmacy_Owner",
+    user = relationship(
+        "User",
         back_populates="refresh_tokens"
     )

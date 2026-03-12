@@ -8,16 +8,16 @@ class Pharmacy(Base):
 
     __tablename__="pharmacy"
 
-    id: Mapped[int] = mapped_column(
+    pharmacy_id: Mapped[int] = mapped_column(
         Integer,
         primary_key=True,
         index=True,
         autoincrement=True
     )
 
-    owner_id: Mapped[int] = mapped_column(
+    user_id: Mapped[int] = mapped_column(
         ForeignKey(
-            "pharmacy_owner.owner_id",
+            "user.user_id",
             ondelete="CASCADE",
             onupdate="CASCADE"
         ),
@@ -28,8 +28,8 @@ class Pharmacy(Base):
 
     address:Mapped[str]=mapped_column(String(255),nullable=False)
 
-    pharmacy_owner = relationship(
-        "Pharmacy_Owner",
+    owner = relationship(
+        "User",
         back_populates="pharmacies"
     )
 

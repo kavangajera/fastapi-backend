@@ -1,7 +1,6 @@
 from datetime import datetime,timedelta, timezone
 from fastapi import HTTPException
 from jose import ExpiredSignatureError, jwt,JWTError
-from schemas.system_internal_pharmacy_owner_schema import System_Internal_Pharmacy_Owner_Schema
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from core.config import settings
 security = HTTPBearer()

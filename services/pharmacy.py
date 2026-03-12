@@ -2,21 +2,21 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from models.pharmacy import Pharmacy
-from models.pharmacy_owner import Pharmacy_Owner
+from models.user import User
 from schemas.pharmacy_input_schema import Pharmacy_Input_Schema
+from schemas.system_internal_user_schema import System_Internal_User_Schema
 
-
-async def create_pharmacy(input_for_pharmacy:Pharmacy_Input_Schema,db:Session):
+async def create_pharmacy(input_for_pharmacy:Pharmacy_Input_Schema,db:Session,user:System_Internal_User_Schema):
     try:
-
-        owner_from_db=db.query(Pharmacy_Owner).filter(
-            Pharmacy_Owner.owner_id==input_for_pharmacy.owner_id
+        print(user)
+        owner_from_db=db.query(User).filter(
+            User.user_id==user.user_id
         ).first()
         print(owner_from_db)
         new_pharmacy:Pharmacy=Pharmacy(
             name=input_for_pharmacy.name,
             address=input_for_pharmacy.address,
-            pharmacy_owner=owner_from_db
+            owner=owner_from_db
         )
         print(new_pharmacy)
 
