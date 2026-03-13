@@ -13,7 +13,7 @@ from argon2.exceptions import VerifyMismatchError
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from schemas.token_data_schemas import TokenData
 
-async def create_User(user:Signup_Input_User_Schema,db:Session):
+def create_User(user:Signup_Input_User_Schema,db:Session):
     ph = PasswordHasher()
     user_model:User = User(
            username=user.username,
@@ -39,13 +39,13 @@ async def create_User(user:Signup_Input_User_Schema,db:Session):
    
    
     return Signup_Output_User_Schema(
-            owner_id=user_model.user_id,
+            user_id=user_model.user_id,
             username=user_model.username,
             email=user_model.email,
             contact=user_model.contact_number
         )           
 
-async def login_User(user:Login_Input_User_Schema,response:Response,db:Session):
+def login_User(user:Login_Input_User_Schema,response:Response,db:Session):
 
     ph=PasswordHasher()
 
