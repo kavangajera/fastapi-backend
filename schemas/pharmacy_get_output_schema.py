@@ -3,10 +3,10 @@ from pydantic import BaseModel,Field
 from schemas.user_get_output import UserGetOutput
 
 class PharmacyGetOutputSchema(BaseModel):
-    PharmacyId:int=Field(alias="pharmacy_id")
-    PharmacyOwner: Optional[UserGetOutput] = Field(default=None, alias="owner")    
-    PharmacyName:str=Field(alias="name")
-    PharmacyAddress:str=Field(alias="address")
+    pharmacy_id:int=Field(alias="pharmacy_id")
+    pharmacy_owner: Optional[UserGetOutput] = Field(default=None, alias="owner")    
+    pharmacy_name:str=Field(alias="name")
+    pharmacy_address:str=Field(alias="address")
 
     class Config:
         from_attributes = True

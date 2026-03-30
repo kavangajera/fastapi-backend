@@ -1,14 +1,14 @@
 from pydantic import BaseModel
 
 class Pharmacy_Input_Schema(BaseModel):
-    name:str
-    address:str
+    pharmacy_title:str
+    pharmacy_location:str
 
     model_config = {
         "json_schema_extra": {
              "example": {
-                "name": "Enter Your pharmacy name",
-                "address":"Dummy address"
+                "pharmacy_title": "Enter Your pharmacy name",
+                "pharmacy_location":"Dummy address"
             }
         }
     }

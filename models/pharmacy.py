@@ -3,10 +3,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
 
-
 class Pharmacy(Base):
 
-    __tablename__="pharmacy"
+    __tablename__ = "pharmacy"
 
     pharmacy_id: Mapped[int] = mapped_column(
         Integer,
@@ -16,20 +15,21 @@ class Pharmacy(Base):
     )
 
     user_id: Mapped[int] = mapped_column(
-        ForeignKey(
-            "user.user_id",
-            ondelete="CASCADE",
-            onupdate="CASCADE"
-        ),
+        ForeignKey("user.user_id", ondelete="CASCADE", onupdate="CASCADE"),
         nullable=False
     )
 
-    name:Mapped[str]=mapped_column(String(255),nullable=False)
-
-    address:Mapped[str]=mapped_column(String(255),nullable=False)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    address: Mapped[str] = mapped_column(String(255), nullable=False)
 
     owner = relationship(
         "User",
-        back_populates="pharmacies"
+        back_populates="pharmacies_owns",
+        foreign_keys=[user_id]
     )
 
+    technician = relationship(
+        "User",
+        back_populates="pharmacies_works",
+        foreign_keys="User.pharmacy_id"
+    )

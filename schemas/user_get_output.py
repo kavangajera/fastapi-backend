@@ -2,11 +2,11 @@ from pydantic import BaseModel,Field
 from core.enums import UserRole
 
 class UserGetOutput(BaseModel):
-    UserId :int=Field(alias="user_id")
-    Username : str=Field(alias="username")
-    Email : str=Field(alias="email")
-    Contact :str=Field(alias="contact_number")
-    Role:UserRole=Field(alias="role")
+    user_id :int=Field(alias="user_id")
+    username : str=Field(alias="username")
+    email : str=Field(alias="email")
+    contact :str=Field(alias="contact_number")
+    role:UserRole=Field(alias="role")
 
     class Config:
         from_attributes = True
