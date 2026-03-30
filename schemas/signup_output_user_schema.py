@@ -1,10 +1,10 @@
 from pydantic import BaseModel
 
-class Signup_Input_Pharmacy_Owner_Schema(BaseModel):
+class Signup_Output_User_Schema(BaseModel):
 
+    user_id :int
     username :str
     email :str
-    input_password:str
     contact:str
     
 

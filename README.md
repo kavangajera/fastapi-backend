@@ -89,7 +89,7 @@ uv sync
 
 ```bash
 # macOS/Linux
-source .venv/bin/activate
+    source .venv/bin/activate
 
 # Windows
 .venv\Scripts\activate
@@ -282,10 +282,10 @@ from .password_reset_token import PasswordResetToken
 
 ```bash
 # Using uvicorn directly
-uvicorn main:app --host 0.0.0.0 --port 8000
+uvicorn main:app --host 0.0.0.0 --port 8443
 
 # With auto-reload (watches for file changes)
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uvicorn main:app --host 0.0.0.0 --port 8443 --reload
 
 # Using uv
 uv run main.py
