@@ -19,7 +19,7 @@ from middlewares.auth import auth_incoming_req
 def _raise_error(status_code: int, message: str):
     """Raise HTTPException with Response_Schema format in detail."""
     raise HTTPException(
-        status_code=status_code,
+        status_code=200,
         detail={"status_code": status_code, "message": message, "data": None}
     )
 
