@@ -47,9 +47,7 @@ async def http_exception_handler(request, exc: HTTPException):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        settings.FRONTEND_URL
-    ],
+    allow_origins=["*"],
     allow_credentials=True,  # ⚠️ REQUIRED for cookies!
     allow_methods=["*"],
     allow_headers=["*"],
