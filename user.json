@@ -1,0 +1,110 @@
+[
+	{
+		"user_id" : 1,
+		"username" : "string",
+		"email" : "string",
+		"contact_number" : "string",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$hMfrRi+eqSuV9pzp5LEoWA$QKH85+wiXWzVJmMmYZJ5lmWndVXXGcDLVDUqSL/FqaA",
+		"role" : "PHARMACY_OWNER",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 3,
+		"username" : "user1",
+		"email" : "user1@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$74VvbbI8/P+c99PIJZNfPA$ZnoFmZ0HRsenNxcYjTGQKGZpgv4OvSdBmRaCVy0ZvzA",
+		"role" : "PHARMACY_OWNER",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 4,
+		"username" : "user2",
+		"email" : "user2@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$/Ip3Gjxi6tquOMwC+dJiew$Oy//k4t8jfhRuWk1wg3UqVj69zhyHfwfHxUKjpB8k5s",
+		"role" : "PHARMACY_OWNER",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 5,
+		"username" : "user3",
+		"email" : "user3@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$fz/6VD/IwnZGmCb8nJDddg$okpXzNlNedgVEb3Rg3L36ebvT4pjdmdymnPCslDKLwM",
+		"role" : "PHARMACY_OWNER",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 6,
+		"username" : "admin",
+		"email" : "admin@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$plTFEl1M4ipkWR6zszuS2g$ilANWfHfOBURNMZhgSksrINiOTaxdx1oJOfwBMwjvLI",
+		"role" : "ADMIN",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 7,
+		"username" : "tech1",
+		"email" : "tech@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$dju3Wrzr+g6ZgRh4hmnfmA$/2heOA+6jGRu4F/MGFV8/D6jCByCQv2xmElROqk0UYQ",
+		"role" : "PHARMACY_OWNER",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 8,
+		"username" : "tech1",
+		"email" : "tech2@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$pyH7TeMP36wa5qAWW2tJ8Q$6tCQwBReQOa3o9TlQa2+HIQn6mRehraeeHrDcGVyBI8",
+		"role" : "TECHNICIAN",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 9,
+		"username" : "DummyUser",
+		"email" : "Every time add new email because of it is unique",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$BN6b31T0UOgczD0mhgBlDw$5tOr81Z7m32mMWkipcA1iy7Hp2P6GlfRzDWf69344aQ",
+		"role" : "TECHNICIAN",
+		"pharmacy_id" : 2
+	},
+	{
+		"user_id" : 12,
+		"username" : "User2Tech",
+		"email" : "User2Tech@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$pPArWo3CqtfDNZppS6FP+Q$jx2XwjyzdkR1X4pkMGVr7SDDn7xSSvukaCFFy+CbqqA",
+		"role" : "TECHNICIAN",
+		"pharmacy_id" : 1
+	},
+	{
+		"user_id" : 15,
+		"username" : "User2Tech",
+		"email" : "User2Tech1@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$lVU9U+mJYhsmsUsoY2veAA$NrdQLXTRl5KW+qVIu25Z+J15bgd4C7ZPXJOjrnE3w9k",
+		"role" : "TECHNICIAN",
+		"pharmacy_id" : 4
+	},
+	{
+		"user_id" : 20,
+		"username" : "Tech1User10",
+		"email" : "Tech1User10@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$piFofWtV4nvgNIpIq30bjQ$/lKbyDIESuud5XYx7zDUQPZSo9tWVzuYCOPxVqCuhQk",
+		"role" : "TECHNICIAN",
+		"pharmacy_id" : null
+	},
+	{
+		"user_id" : 21,
+		"username" : "Tech2User10",
+		"email" : "Tech2User10@gmail.com",
+		"contact_number" : "1234567890",
+		"password_hash" : "$argon2id$v=19$m=65536,t=3,p=4$6OpQWXojncgNM+58NN3Suw$TOs8n0QBinKvB3C3MGjEsCahCSCEw4cGy5q3lX+L4QM",
+		"role" : "TECHNICIAN",
+		"pharmacy_id" : null
+	}
+]

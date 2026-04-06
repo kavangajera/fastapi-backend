@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Depends, HTTPException, Query, Path, Request, Response
 from sqlalchemy.orm import Session
 
 from core.enums import UserRole
@@ -72,7 +72,11 @@ def create_technician(
 # ================= GET TECHNICIANS =================
 
 def get_technicians(
-    ph_id: int = None,
+    ph_id: int = Query(
+        None,
+        description="Optional pharmacy ID to filter technicians. If omitted, returns technicians for all owned pharmacies.",
+        examples=[2],
+    ),
     db: Session = Depends(get_db),
     user=Depends(auth_incoming_req)
 ):
@@ -86,8 +90,12 @@ def get_technicians(
 # ================= UPDATE USER BY ID =================
 
 def update_user(
-    user_id: int,
-    body: UserUpdateInput,
+    user_id: int = Path(
+        ...,
+        description="Unique identifier of the user to update.",
+        examples=[12],
+    ),
+    body: UserUpdateInput = ...,
     db: Session = Depends(get_db),
     user=Depends(auth_incoming_req)
 ):
@@ -98,7 +106,11 @@ def update_user(
 # ================= DELETE USER BY ID =================
 
 def delete_user(
-    user_id: int,
+    user_id: int = Path(
+        ...,
+        description="Unique identifier of the user to delete.",
+        examples=[12],
+    ),
     db: Session = Depends(get_db),
     user=Depends(auth_incoming_req)
 ):
@@ -143,7 +155,11 @@ def get_all_users(
 # ================= GET USER BY EMAIL (Admin Only) =================
 
 def get_user_by_email(
-    user_email: str,
+    user_email: str = Query(
+        ...,
+        description="Email address to search for. Must be an exact match.",
+        examples=["user2@gmail.com"],
+    ),
     db: Session = Depends(get_db),
     user=Depends(auth_incoming_req)
 ):
@@ -157,7 +173,11 @@ def get_user_by_email(
 # ================= GET USERS BY ROLE (Admin Only) =================
 
 def get_users_by_role(
-    role: str,
+    role: str = Query(
+        ...,
+        description="Role to filter by. Valid values: OWNER, TECHNICIAN, ADMIN.",
+        examples=["OWNER"],
+    ),
     db: Session = Depends(get_db),
     user=Depends(auth_incoming_req)
 ):

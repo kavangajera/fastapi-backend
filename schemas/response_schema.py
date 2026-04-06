@@ -1,7 +1,27 @@
-from pydantic import BaseModel
-from typing import Any
+from pydantic import BaseModel, Field
+from typing import Any, Optional
+
 
 class Response_Schema(BaseModel):
-    status_code: int
-    message: str
-    data: Any
+    """
+    Standard envelope used by **every** API response.
+
+    - ``status_code`` mirrors the logical HTTP status (200, 201, 400, 401, 403, 404, 422 …).
+    - ``message`` is a human-readable summary.
+    - ``data`` contains the payload on success, or ``null`` on error.
+    """
+
+    status_code: int = Field(
+        ...,
+        description="Logical HTTP status code (e.g. 200 for success, 201 for created, 4xx for client errors).",
+        examples=[200],
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable result summary, e.g. 'Login successful' or 'Validation Error: …'.",
+        examples=["Success"],
+    )
+    data: Any = Field(
+        None,
+        description="Response payload — contains the requested resource(s) on success, or null on error.",
+    )

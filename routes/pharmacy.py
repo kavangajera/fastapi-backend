@@ -1,4 +1,4 @@
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Query, Path
 from schemas.response_schema import Response_Schema
 from schemas.pharmacy_update_input import PharmacyUpdateInput
 from services import pharmacy
@@ -40,7 +40,11 @@ def create_pharmacy(
 # ================= GET PHARMACY =================
 
 def get_pharmacy(
-    ph_id: int = None,
+    ph_id: int = Query(
+        None,
+        description="Optional pharmacy ID to retrieve a specific pharmacy. If omitted, returns all pharmacies for the authenticated user.",
+        examples=[2],
+    ),
     db=Depends(get_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req)
 ):
@@ -54,7 +58,11 @@ def get_pharmacy(
 # ================= GET PHARMACY BY OWNER (Admin Only) =================
 
 def get_pharmacy_by_owner_id(
-    owner_id: int,
+    owner_id: int = Query(
+        ...,
+        description="User ID of the pharmacy owner. Returns all pharmacies owned by this user.",
+        examples=[4],
+    ),
     db=Depends(get_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req)
 ):
@@ -71,8 +79,12 @@ def get_pharmacy_by_owner_id(
 # ================= UPDATE PHARMACY =================
 
 def update_pharmacy(
-    ph_id: int,
-    body: PharmacyUpdateInput,
+    ph_id: int = Path(
+        ...,
+        description="Unique identifier of the pharmacy to update.",
+        examples=[2],
+    ),
+    body: PharmacyUpdateInput = ...,
     db=Depends(get_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req)
 ):
@@ -86,7 +98,11 @@ def update_pharmacy(
 # ================= DELETE PHARMACY =================
 
 def delete_pharmacy(
-    ph_id: int,
+    ph_id: int = Path(
+        ...,
+        description="Unique identifier of the pharmacy to delete.",
+        examples=[2],
+    ),
     db=Depends(get_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req)
 ):
@@ -100,7 +116,11 @@ def delete_pharmacy(
 # ================= SEARCH PHARMACY BY NAME =================
 
 def get_pharmacy_by_name(
-    name: str,
+    name: str = Query(
+        ...,
+        description="Name or partial name to search for (case-insensitive partial match).",
+        examples=["Deva"],
+    ),
     db=Depends(get_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req)
 ):

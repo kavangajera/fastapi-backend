@@ -8,7 +8,47 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from routes import router
 from middlewares import auth
-app = FastAPI()
+app = FastAPI(
+    title="Queue RX API",
+    version="1.0.0",
+    description="""
+Queue RX is a pharmacy queue management backend API.
+
+## Authentication
+
+All protected endpoints require a **Bearer token** supplied via the `Authorization` header:
+```
+Authorization: Bearer <access_token>
+```
+Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-access-token` (with a valid `refresh_token` cookie) to get a new access token when it expires.
+
+## Roles
+
+| Role | Description |
+|------|-------------|
+| **OWNER** | Pharmacy owner. Can manage their own pharmacies and technicians. |
+| **TECHNICIAN** | Pharmacy staff. Can view their own profile only. Cannot manage pharmacies or other users. |
+| **ADMIN** | Superuser. Has access to all endpoints including admin-only routes. |
+""",
+    openapi_tags=[
+        {
+            "name": "Auth",
+            "description": "Endpoints for user registration, login, and access token renewal.",
+        },
+        {
+            "name": "User",
+            "description": "Endpoints for managing user profiles and technician accounts.",
+        },
+        {
+            "name": "Pharmacy",
+            "description": "Endpoints for creating, retrieving, updating, and deleting pharmacies.",
+        },
+        {
+            "name": "Admin",
+            "description": "Endpoints restricted to users with the ADMIN role for platform-wide management.",
+        },
+    ],
+)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc: RequestValidationError):
