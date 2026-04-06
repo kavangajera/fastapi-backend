@@ -25,9 +25,7 @@ class UserData(BaseModel):
     """User data returned after signup, update, or profile retrieval."""
 
     id: int = Field(..., description="Unique user identifier.", examples=[4])
-    name: str = Field(..., description="Display name.", examples=["user2"])
     email: str = Field(..., description="Registered email.", examples=["user2@gmail.com"])
-    phone: str = Field(..., description="Contact number.", examples=["1234567890"])
     role: str = Field(
         ...,
         description="User role — one of OWNER, TECHNICIAN, ADMIN.",
@@ -63,9 +61,7 @@ class SignupResponse(BaseModel):
                 "message": "User created successfully",
                 "data": {
                     "id": 4,
-                    "name": "user2",
                     "email": "user2@gmail.com",
-                    "phone": "1234567890",
                     "role": "OWNER",
                 },
             }
@@ -129,9 +125,7 @@ class UserProfileResponse(BaseModel):
                 "message": "Profile retrieved successfully",
                 "data": {
                     "id": 4,
-                    "name": "user2",
                     "email": "user2@gmail.com",
-                    "phone": "1234567890",
                     "role": "OWNER",
                 },
             }
@@ -153,9 +147,7 @@ class UserUpdateResponse(BaseModel):
                 "message": "User updated successfully",
                 "data": {
                     "id": 4,
-                    "name": "UpdatedUser2",
                     "email": "updated_user2@gmail.com",
-                    "phone": "9876543210",
                     "role": "OWNER",
                 },
             }
@@ -197,9 +189,7 @@ class TechnicianCreateResponse(BaseModel):
                 "message": "Technician created successfully",
                 "data": {
                     "id": 12,
-                    "name": "User2Tech",
                     "email": "User2Tech@gmail.com",
-                    "phone": "1234567890",
                     "role": "TECHNICIAN",
                 },
             }
@@ -224,16 +214,12 @@ class TechnicianListResponse(BaseModel):
                 "data": [
                     {
                         "id": 9,
-                        "name": "DummyUser",
                         "email": "Every time add new email because of it is unique",
-                        "phone": "1234567890",
                         "role": "TECHNICIAN",
                     },
                     {
                         "id": 12,
-                        "name": "User2Tech",
                         "email": "User2Tech@gmail.com",
-                        "phone": "1234567890",
                         "role": "TECHNICIAN",
                     },
                 ],
@@ -259,23 +245,17 @@ class UserListResponse(BaseModel):
                 "data": [
                     {
                         "id": 4,
-                        "name": "user2",
                         "email": "user2@gmail.com",
-                        "phone": "1234567890",
                         "role": "OWNER",
                     },
                     {
                         "id": 6,
-                        "name": "admin",
                         "email": "admin@gmail.com",
-                        "phone": "1234567890",
                         "role": "ADMIN",
                     },
                     {
                         "id": 12,
-                        "name": "User2Tech",
                         "email": "User2Tech@gmail.com",
-                        "phone": "1234567890",
                         "role": "TECHNICIAN",
                     },
                 ],
@@ -298,9 +278,7 @@ class UserByEmailResponse(BaseModel):
                 "message": "User retrieved successfully",
                 "data": {
                     "id": 4,
-                    "name": "user2",
                     "email": "user2@gmail.com",
-                    "phone": "1234567890",
                     "role": "OWNER",
                 },
             }
@@ -325,16 +303,12 @@ class UsersByRoleResponse(BaseModel):
                 "data": [
                     {
                         "id": 4,
-                        "name": "user2",
                         "email": "user2@gmail.com",
-                        "phone": "1234567890",
                         "role": "OWNER",
                     },
                     {
                         "id": 7,
-                        "name": "tech1",
                         "email": "tech@gmail.com",
-                        "phone": "1234567890",
                         "role": "OWNER",
                     },
                 ],
@@ -365,9 +339,7 @@ class PharmacyCreateResponse(BaseModel):
                     "address": "skfnoajnf",
                     "owner": {
                         "id": 4,
-                        "name": "user2",
                         "email": "user2@gmail.com",
-                        "phone": "1234567890",
                         "role": "OWNER",
                     },
                 },
@@ -397,9 +369,7 @@ class PharmacyListResponse(BaseModel):
                         "address": "skfnoajnf",
                         "owner": {
                             "id": 4,
-                            "name": "user2",
                             "email": "user2@gmail.com",
-                            "phone": "1234567890",
                             "role": "OWNER",
                         },
                     },
@@ -409,9 +379,7 @@ class PharmacyListResponse(BaseModel):
                         "address": "Dummy address",
                         "owner": {
                             "id": 7,
-                            "name": "tech1",
                             "email": "tech@gmail.com",
-                            "phone": "1234567890",
                             "role": "OWNER",
                         },
                     },
@@ -441,9 +409,7 @@ class PharmacyUpdateResponse(BaseModel):
                     "address": "456 Wellness Ave, Pune",
                     "owner": {
                         "id": 4,
-                        "name": "user2",
                         "email": "user2@gmail.com",
-                        "phone": "1234567890",
                         "role": "OWNER",
                     },
                 },

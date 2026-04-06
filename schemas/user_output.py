@@ -12,23 +12,11 @@ class UserOutput(BaseModel):
         description="Unique numeric identifier of the user.",
         examples=[4],
     )
-    name: str = Field(
-        ...,
-        alias="username",
-        description="Display name of the user.",
-        examples=["user2"],
-    )
     email: str = Field(
         ...,
         alias="email",
         description="Registered email address.",
         examples=["user2@gmail.com"],
-    )
-    phone: str = Field(
-        ...,
-        alias="contact_number",
-        description="Contact / phone number.",
-        examples=["1234567890"],
     )
     role: UserRole = Field(
         ...,

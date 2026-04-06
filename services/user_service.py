@@ -47,10 +47,12 @@ def _get_owner_pharmacy_ids(owner_id: int, db: Session) -> list[int]:
 
 def create_user(user: Signup_Input_User_Schema, db: Session):
     ph = PasswordHasher()
+    # Derive username from email (part before @)
+    username = user.user_email.split("@")[0]
     user_model: User = User(
-        username=user.user_name,
+        username=username,
         email=user.user_email,
-        contact_number=user.contact,
+        contact_number="1234567890",
         password_hash=ph.hash(user.input_password)
     )
     try:
