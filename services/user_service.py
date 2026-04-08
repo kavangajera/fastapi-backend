@@ -123,7 +123,12 @@ def login_user(user: Login_Input_User_Schema, response: Response, db: Session):
         print("Unexpected error:", str(e))
         _raise_error(500, "Something went wrong during login")
 
-    return {"access_token": access_token}
+    return {
+        "access_token": access_token,
+        "id": user_from_db.user_id,
+        "email": user_from_db.email,
+        "role": user_from_db.role.value,
+    }
 
 
 def get_user_by_id(id: str, db):

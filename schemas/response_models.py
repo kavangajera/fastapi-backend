@@ -21,6 +21,23 @@ class AccessTokenData(BaseModel):
     )
 
 
+class LoginData(BaseModel):
+    """Data returned after successful login — token + user info."""
+
+    access_token: str = Field(
+        ...,
+        description="JWT access token. Include in the Authorization header as 'Bearer <token>'.",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
+    )
+    id: int = Field(..., description="Unique user identifier.", examples=[4])
+    email: str = Field(..., description="Registered email.", examples=["user2@gmail.com"])
+    role: str = Field(
+        ...,
+        description="User role — one of OWNER, TECHNICIAN, ADMIN.",
+        examples=["OWNER"],
+    )
+
+
 class UserData(BaseModel):
     """User data returned after signup, update, or profile retrieval."""
 
@@ -70,11 +87,11 @@ class SignupResponse(BaseModel):
 
 
 class LoginResponse(BaseModel):
-    """``POST /user/login`` — authenticates and returns a JWT access token."""
+    """``POST /user/login`` — authenticates and returns a JWT access token with user info."""
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
     message: str = Field(..., description="Result summary.", examples=["Login successful"])
-    data: AccessTokenData = Field(..., description="Object containing the JWT access token.")
+    data: LoginData = Field(..., description="Object containing the JWT access token and user info.")
 
     model_config = {
         "json_schema_extra": {
@@ -83,6 +100,9 @@ class LoginResponse(BaseModel):
                 "message": "Login successful",
                 "data": {
                     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InVzZXIyIiwidXNlcl9pZCI6NCwiZXhwaXJlIjoxNzQzOTM2MDAwfQ.xxxxx",
+                    "id": 4,
+                    "email": "user2@gmail.com",
+                    "role": "OWNER",
                 },
             }
         }
