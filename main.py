@@ -7,6 +7,7 @@ from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from routes import router
+from routes.pharmacy_purchase_report import router as report_router
 from middlewares import auth
 app = FastAPI(
     title="Queue RX API",
@@ -88,11 +89,12 @@ async def http_exception_handler(request, exc: HTTPException):
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,  # ⚠️ REQUIRED for cookies!
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 app.include_router(router)
+app.include_router(report_router)
 @app.get("/")
 async def welcome():
     return {"message": "Welcome to Queue RX!"}
