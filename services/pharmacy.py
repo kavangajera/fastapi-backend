@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
 from core import enums
 from models.pharmacy import Pharmacy
+from models.address import Address
 from models.user import User, UserRole
 from schemas.pharmacy_input_schema import Pharmacy_Input_Schema
 from schemas.pharmacy_update_input import PharmacyUpdateInput
@@ -56,9 +57,25 @@ def create_pharmacy(
         if not owner_from_db:
             _raise_error(404, "Owner user not found")
 
+        # --- Build Address row (all-nulls if no address provided) ---
+        addr_data = {}
+        if input_for_pharmacy.address:
+            addr_data = input_for_pharmacy.address.model_dump(exclude_unset=True)
+
+        new_address = Address(
+            address_line_1=addr_data.get("address_line_1"),
+            address_line_2=addr_data.get("address_line_2"),
+            city=addr_data.get("city"),
+            state=addr_data.get("state"),
+            zip_code=addr_data.get("zip_code"),
+        )
+        db.add(new_address)
+        db.flush()  # get the address_id before creating pharmacy
+
         new_pharmacy: Pharmacy = Pharmacy(
             name=input_for_pharmacy.pharmacy_title,
-            address=input_for_pharmacy.pharmacy_location,
+            code=input_for_pharmacy.pharmacy_code,
+            address_id=new_address.address_id,
             owner=owner_from_db
         )
 
@@ -167,10 +184,23 @@ def update_pharmacy(
 
         # Apply only provided fields
         update_fields = update_data.model_dump(exclude_unset=True)
+
         if "pharmacy_title" in update_fields:
             pharmacy.name = update_fields["pharmacy_title"]
-        if "pharmacy_location" in update_fields:
-            pharmacy.address = update_fields["pharmacy_location"]
+        if "pharmacy_code" in update_fields:
+            pharmacy.code = update_fields["pharmacy_code"]
+
+        # --- Update linked Address if address data provided ---
+        if "address" in update_fields and update_fields["address"] is not None:
+            addr_update = update_fields["address"]
+            address_obj: Address = db.query(Address).filter(
+                Address.address_id == pharmacy.address_id
+            ).first()
+
+            if address_obj:
+                for field_name in ("address_line_1", "address_line_2", "city", "state", "zip_code"):
+                    if field_name in addr_update:
+                        setattr(address_obj, field_name, addr_update[field_name])
 
         db.commit()
         db.refresh(pharmacy)
@@ -215,7 +245,15 @@ def delete_pharmacy(
             if pharmacy.user_id != user.user_id:
                 _raise_error(403, "You can only delete your own pharmacy")
 
+        # Delete the linked address first
+        address_obj = db.query(Address).filter(
+            Address.address_id == pharmacy.address_id
+        ).first()
+
         db.delete(pharmacy)
+        if address_obj:
+            db.delete(address_obj)
+
         db.commit()
 
         return None

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from database import Base
 
+
 class Pharmacy(Base):
 
     __tablename__ = "pharmacy"
@@ -20,7 +21,12 @@ class Pharmacy(Base):
     )
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    address: Mapped[str] = mapped_column(String(255), nullable=False)
+    code: Mapped[str] = mapped_column(String(100), nullable=True)
+
+    address_id: Mapped[int] = mapped_column(
+        ForeignKey("address.address_id", ondelete="CASCADE", onupdate="CASCADE"),
+        nullable=False
+    )
 
     owner = relationship(
         "User",
@@ -32,4 +38,11 @@ class Pharmacy(Base):
         "User",
         back_populates="pharmacies_works",
         foreign_keys="User.pharmacy_id"
+    )
+
+    address_rel = relationship(
+        "Address",
+        back_populates="pharmacy",
+        uselist=False,
+        lazy="joined"
     )

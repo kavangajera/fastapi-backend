@@ -50,12 +50,27 @@ class UserData(BaseModel):
     )
 
 
+class AddressData(BaseModel):
+    """Address data nested inside pharmacy responses."""
+
+    address_id: int = Field(..., description="Unique address identifier.", examples=[1])
+    address_line_1: Optional[str] = Field(None, description="Primary street address.", examples=["123 Health Street"])
+    address_line_2: Optional[str] = Field(None, description="Secondary address line.", examples=["Suite 200"])
+    city: Optional[str] = Field(None, description="City.", examples=["Mumbai"])
+    state: Optional[str] = Field(None, description="State.", examples=["Maharashtra"])
+    zip_code: Optional[str] = Field(None, description="ZIP / postal code.", examples=["400001"])
+
+
 class PharmacyData(BaseModel):
     """Pharmacy data returned by CRUD endpoints."""
 
     id: int = Field(..., description="Unique pharmacy identifier.", examples=[2])
     name: str = Field(..., description="Pharmacy name.", examples=["Deva'sShop"])
-    address: str = Field(..., description="Street address.", examples=["skfnoajnf"])
+    code: Optional[str] = Field(None, description="Store code.", examples=["DVA-001"])
+    address: Optional[AddressData] = Field(
+        None,
+        description="Address details of the pharmacy.",
+    )
     owner: Optional[UserData] = Field(
         None,
         description="Owner details (included for ADMIN, null for OWNER viewing own pharmacy).",
@@ -355,8 +370,16 @@ class PharmacyCreateResponse(BaseModel):
                 "message": "Pharmacy created successfully",
                 "data": {
                     "id": 2,
-                    "name": "Deva'sShop",
-                    "address": "skfnoajnf",
+                    "name": "MediCare Pharmacy",
+                    "code": "MED-001",
+                    "address": {
+                        "address_id": 1,
+                        "address_line_1": "123 Health Street",
+                        "address_line_2": "Suite 200",
+                        "city": "Mumbai",
+                        "state": "Maharashtra",
+                        "zip_code": "400001",
+                    },
                     "owner": {
                         "id": 4,
                         "email": "user2@gmail.com",
@@ -385,21 +408,19 @@ class PharmacyListResponse(BaseModel):
                 "data": [
                     {
                         "id": 2,
-                        "name": "Deva'sShop",
-                        "address": "skfnoajnf",
+                        "name": "MediCare Pharmacy",
+                        "code": "MED-001",
+                        "address": {
+                            "address_id": 1,
+                            "address_line_1": "123 Health Street",
+                            "address_line_2": None,
+                            "city": "Mumbai",
+                            "state": "Maharashtra",
+                            "zip_code": "400001",
+                        },
                         "owner": {
                             "id": 4,
                             "email": "user2@gmail.com",
-                            "role": "OWNER",
-                        },
-                    },
-                    {
-                        "id": 9,
-                        "name": "Enter Your pharmacy name",
-                        "address": "Dummy address",
-                        "owner": {
-                            "id": 7,
-                            "email": "tech@gmail.com",
                             "role": "OWNER",
                         },
                     },
@@ -426,7 +447,15 @@ class PharmacyUpdateResponse(BaseModel):
                 "data": {
                     "id": 2,
                     "name": "Deva's Health Hub",
-                    "address": "456 Wellness Ave, Pune",
+                    "code": "DVA-002",
+                    "address": {
+                        "address_id": 1,
+                        "address_line_1": "456 Wellness Ave",
+                        "address_line_2": None,
+                        "city": "Pune",
+                        "state": "Maharashtra",
+                        "zip_code": "411001",
+                    },
                     "owner": {
                         "id": 4,
                         "email": "user2@gmail.com",

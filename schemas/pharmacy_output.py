@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional
 from schemas.user_output import UserOutput
+from schemas.address_schema import AddressOutput
 
 
 class PharmacyOutput(BaseModel):
@@ -18,11 +19,16 @@ class PharmacyOutput(BaseModel):
         description="Name / title of the pharmacy.",
         examples=["Deva'sShop"],
     )
-    address: str = Field(
-        ...,
-        alias="address",
-        description="Physical street address of the pharmacy.",
-        examples=["skfnoajnf"],
+    code: Optional[str] = Field(
+        default=None,
+        alias="code",
+        description="Store code of the pharmacy.",
+        examples=["DVA-001"],
+    )
+    address: Optional[AddressOutput] = Field(
+        default=None,
+        alias="address_rel",
+        description="Address details of the pharmacy.",
     )
     owner: Optional[UserOutput] = Field(
         default=None,
