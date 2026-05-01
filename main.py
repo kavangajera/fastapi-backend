@@ -45,6 +45,10 @@ Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-acces
             "description": "Endpoints for creating, retrieving, updating, and deleting pharmacies.",
         },
         {
+            "name": "Ownership Transfer",
+            "description": "Endpoints for transferring pharmacy ownership with OTP verification.",
+        },
+        {
             "name": "Admin",
             "description": "Endpoints restricted to users with the ADMIN role for platform-wide management.",
         },

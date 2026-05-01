@@ -196,3 +196,10 @@ print(json.dumps(summary, indent=2))
 
 # 2. **Email:** `DemoOwner89907@example.com`  
 #    **Password:** `950826`
+
+# Pharmacy owner creates req. for ownership transfer.
+# Gets OTP to verify(OTP will be stay valid for 30 sec. and one retry)
+# req. is valid for 15 min within that reciver has to accept.
+# Or He can reject.
+# Same flow of OTP for reciver(OTP will be stay valid for 30 sec. and one retry)
+# If both side validation is done then Ownership is transfered.

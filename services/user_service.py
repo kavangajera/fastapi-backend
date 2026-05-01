@@ -164,7 +164,7 @@ def generate_new_access_token(req: Request, db: Session):
 
         token_obj = TokenData(**data)
         user_from_db: User = db.query(User).filter(
-            User.user_id == token_obj.owner_id
+            User.user_id == token_obj.user_id
         ).first()
 
         if not user_from_db:

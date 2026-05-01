@@ -15,6 +15,8 @@ from schemas.response_models import (
     PharmacyListResponse,
     PharmacyUpdateResponse,
     PharmacyDeleteResponse,
+    OwnershipTransferResponse,
+    OwnershipTransferOtpResponse,
 )
 from .user import create_user, create_technician
 from .user import login_user
@@ -27,6 +29,14 @@ from .user import get_all_users, get_user_by_email, get_users_by_role, get_my_pr
 from .pharmacy import create_pharmacy, get_pharmacy_by_owner_id
 from .pharmacy import get_pharmacy
 from .pharmacy import update_pharmacy, delete_pharmacy, get_pharmacy_by_name
+from .ownership_transfer import (
+    request_transfer_otp,
+    create_transfer_request,
+    send_accept_otp,
+    accept_transfer_request,
+    reject_transfer_request,
+    get_transfer_request,
+)
 
 router = APIRouter()
 
@@ -372,4 +382,92 @@ router.add_api_route(
     ),
     response_model=PharmacyDeleteResponse,
     operation_id="delete_pharmacy",
+)
+
+
+# ================= OWNERSHIP TRANSFER ROUTES =================
+
+router.add_api_route(
+    '/pharmacy/ownership-transfer/request-otp',
+    endpoint=request_transfer_otp,
+    methods=["POST"],
+    tags=["Ownership Transfer"],
+    summary="Send OTP for ownership transfer request",
+    description=(
+        "Sends an OTP to the **current owner** to verify a new ownership transfer request.\n\n"
+        "🔒 **Requires Bearer token.** OWNER only."
+    ),
+    response_model=OwnershipTransferOtpResponse,
+    operation_id="request_transfer_otp",
+)
+
+router.add_api_route(
+    '/pharmacy/ownership-transfer/create',
+    endpoint=create_transfer_request,
+    methods=["POST"],
+    tags=["Ownership Transfer"],
+    summary="Create an ownership transfer request",
+    description=(
+        "Creates a new ownership transfer request after OTP verification.\n\n"
+        "🔒 **Requires Bearer token.** OWNER only."
+    ),
+    response_model=OwnershipTransferResponse,
+    operation_id="create_transfer_request",
+)
+
+router.add_api_route(
+    '/pharmacy/ownership-transfer/{transfer_id}',
+    endpoint=get_transfer_request,
+    methods=["GET"],
+    tags=["Ownership Transfer"],
+    summary="Get an ownership transfer request",
+    description=(
+        "Retrieves a transfer request by ID. Only the current owner, new owner, "
+        "or ADMIN can access it.\n\n"
+        "🔒 **Requires Bearer token.**"
+    ),
+    response_model=OwnershipTransferResponse,
+    operation_id="get_transfer_request",
+)
+
+router.add_api_route(
+    '/pharmacy/ownership-transfer/{transfer_id}/accept-otp',
+    endpoint=send_accept_otp,
+    methods=["POST"],
+    tags=["Ownership Transfer"],
+    summary="Send OTP to accept transfer",
+    description=(
+        "Sends an OTP to the **new owner** to accept the transfer request.\n\n"
+        "🔒 **Requires Bearer token.** New owner only."
+    ),
+    response_model=OwnershipTransferOtpResponse,
+    operation_id="send_accept_otp",
+)
+
+router.add_api_route(
+    '/pharmacy/ownership-transfer/{transfer_id}/accept',
+    endpoint=accept_transfer_request,
+    methods=["POST"],
+    tags=["Ownership Transfer"],
+    summary="Accept an ownership transfer request",
+    description=(
+        "Accepts a transfer request after OTP verification.\n\n"
+        "🔒 **Requires Bearer token.** New owner only."
+    ),
+    response_model=OwnershipTransferResponse,
+    operation_id="accept_transfer_request",
+)
+
+router.add_api_route(
+    '/pharmacy/ownership-transfer/{transfer_id}/reject',
+    endpoint=reject_transfer_request,
+    methods=["POST"],
+    tags=["Ownership Transfer"],
+    summary="Reject an ownership transfer request",
+    description=(
+        "Rejects a transfer request.\n\n"
+        "🔒 **Requires Bearer token.** New owner only."
+    ),
+    response_model=OwnershipTransferResponse,
+    operation_id="reject_transfer_request",
 )

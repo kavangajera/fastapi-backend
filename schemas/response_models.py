@@ -5,6 +5,7 @@ Each model replaces the generic ``Response_Schema`` on specific endpoints so
 that Swagger/OpenAPI shows the **exact** shape of ``data`` instead of ``Any``.
 """
 
+from datetime import datetime
 from typing import List, Optional
 from pydantic import BaseModel, Field
 
@@ -481,6 +482,78 @@ class PharmacyDeleteResponse(BaseModel):
             "example": {
                 "status_code": 200,
                 "message": "Pharmacy deleted successfully",
+                "data": None,
+            }
+        }
+    }
+
+
+# ────────────── Ownership Transfer Responses ─────────────────
+
+class OwnershipTransferData(BaseModel):
+    """Ownership transfer request data."""
+
+    id: int = Field(..., description="Transfer request ID.", examples=[12])
+    pharmacy_id: int = Field(..., description="Pharmacy ID being transferred.", examples=[2])
+    current_owner_id: int = Field(..., description="Current owner user ID.", examples=[4])
+    new_owner_id: int = Field(..., description="New owner user ID.", examples=[7])
+    status: str = Field(
+        ...,
+        description="Transfer request status (ACTIVE, ACCEPTED, REJECTED, EXPIRED).",
+        examples=["ACTIVE"],
+    )
+    created_at: datetime = Field(..., description="Request creation timestamp.")
+    expires_at: datetime = Field(..., description="Request expiry timestamp.")
+    accepted_at: Optional[datetime] = Field(None, description="Acceptance timestamp.")
+    rejected_at: Optional[datetime] = Field(None, description="Rejection timestamp.")
+
+
+class OwnershipTransferResponse(BaseModel):
+    """Response for ownership transfer create/accept/reject/get endpoints."""
+
+    status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
+    message: str = Field(
+        ..., description="Result summary.", examples=["Transfer request created successfully"]
+    )
+    data: OwnershipTransferData = Field(
+        ..., description="Ownership transfer request object."
+    )
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "status_code": 200,
+                "message": "Transfer request created successfully",
+                "data": {
+                    "id": 12,
+                    "pharmacy_id": 2,
+                    "current_owner_id": 4,
+                    "new_owner_id": 7,
+                    "status": "ACTIVE",
+                    "created_at": "2026-04-29T09:10:00",
+                    "expires_at": "2026-04-29T09:25:00",
+                    "accepted_at": None,
+                    "rejected_at": None,
+                },
+            }
+        }
+    }
+
+
+class OwnershipTransferOtpResponse(BaseModel):
+    """Response for OTP send endpoints."""
+
+    status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
+    message: str = Field(
+        ..., description="Result summary.", examples=["OTP sent successfully"]
+    )
+    data: Optional[str] = Field(None, description="Always null on success.")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "status_code": 200,
+                "message": "OTP sent successfully",
                 "data": None,
             }
         }
