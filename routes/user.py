@@ -44,6 +44,7 @@ def login_user(
     db: Session = Depends(get_db)
 ):
     res = user_service.login_user(user, response, db)
+    print(res)
     return success_response(res, "Login successful")
 
 

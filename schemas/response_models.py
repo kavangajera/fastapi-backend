@@ -30,6 +30,11 @@ class LoginData(BaseModel):
         description="JWT access token. Include in the Authorization header as 'Bearer <token>'.",
         examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
+    refresh_token:str=Field(
+        ...,
+        description="JWT refresh token.",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
+    )
     id: int = Field(..., description="Unique user identifier.", examples=[4])
     email: str = Field(..., description="Registered email.", examples=["user2@gmail.com"])
     role: str = Field(

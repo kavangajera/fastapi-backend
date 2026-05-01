@@ -125,6 +125,7 @@ def login_user(user: Login_Input_User_Schema, response: Response, db: Session):
 
     return {
         "access_token": access_token,
+        "refresh_token":refresh_token,
         "id": user_from_db.user_id,
         "email": user_from_db.email,
         "role": user_from_db.role.value,
