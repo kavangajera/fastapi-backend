@@ -847,6 +847,10 @@ kill -9 <PID>
 
 ---
 
+## important cmds
+
+- apt-get install -y libreoffice
+
 ## License
 
 [Your License Here]

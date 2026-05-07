@@ -6,9 +6,13 @@ import fastapi_swagger_dark as fsd
 from sqlalchemy import text
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
+from core.logging import setup_logging
 from routes import router
 from routes.pharmacy_purchase_report import router as report_router
+from routes.barcode import router as barcode_router
 from middlewares import auth
+
+setup_logging()
 app = FastAPI(
     title="Queue RX API",
     version="1.0.0",
@@ -63,21 +67,21 @@ async def validation_exception_handler(request, exc: RequestValidationError):
     combined_message = " | ".join(error_messages) if error_messages else "Validation Error"
     
     return JSONResponse(
-        status_code=200,
+        status_code=422,
         content={
             "status_code": 422,
             "message": f"Validation Error: {combined_message}",
-            "data": None
-        }
+            "data": None,
+        },
     )
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc: HTTPException):
     if isinstance(exc.detail, dict) and "status_code" in exc.detail:
-        return JSONResponse(status_code=200, content=exc.detail)
+        return JSONResponse(status_code=exc.detail.get("status_code", exc.status_code), content=exc.detail)
     
     return JSONResponse(
-        status_code=200,
+        status_code=exc.status_code,
         content={
             "status_code": exc.status_code,
             "message": str(exc.detail),
@@ -95,6 +99,7 @@ app.add_middleware(
 )
 app.include_router(router)
 app.include_router(report_router)
+app.include_router(barcode_router)
 @app.get("/")
 async def welcome():
     return {"message": "Welcome to Queue RX!"}

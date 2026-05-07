@@ -35,23 +35,27 @@ Output shape
 from __future__ import annotations
 
 import re
+import time
 from typing import Any
 
 import fitz  # PyMuPDF
+from loguru import logger
 
 
 # ────────────────────────────── regex constants ───────────────────────────────
 
 _NDC_RE = re.compile(r"\b(\d{11})\b")
 _DATE_RE = re.compile(r"\d{2}/\d{2}/\d{4}")
-_MONEY_RE = re.compile(r"\$[\d,]+\.?\d*")
+_MONEY_RE = re.compile(r"\$\s*[\d,]+\.?\d*")
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[ \-]?\d{3}[ \-]?\d{4}")
 _PAT_NAME_RE = re.compile(r"([A-Z][A-Za-z'\-]+,\s*[A-Za-z'\-]+)")
 _STATE_ZIP_RE = re.compile(r"\b([A-Z]{2})\s+(\d{5}(?:\-\d{4})?)\b")
+_ADDR_KW_RE = re.compile(r"\b(AVE|BLVD|ST|RD|LN|DR|APT|FL|FLOOR|WAY|COURT|CT|PLACE|PL)\b", re.IGNORECASE)
 
 # "right-of-NDC" portion: qty  days  MM/DD/YYYY  rxno  ref  ...rest
 _RIGHT_RE = re.compile(
     r"^\s*(?P<qty>\d{1,4}\.\d{3})\s+"
+    r"(?:(?P<pat_name>[A-Z][A-Za-z'\-]+,\s*[A-Za-z'\-]+)\s+)?"
     r"(?P<days>\d{1,3})\s+"
     r"(?P<date>\d{2}/\d{2}/\d{4})\s+"
     r"(?P<rxno>\d{5,6})\s+"
@@ -84,7 +88,7 @@ _SKIP_PREFIXES = (
 def _parse_money(s: str | None) -> str | None:
     if not s:
         return None
-    cleaned = s.strip().lstrip("$").replace(",", "")
+    cleaned = s.strip().lstrip("$").replace(",", "").strip()
     return cleaned if cleaned else None
 
 
@@ -206,6 +210,7 @@ def _parse_detail_row(ln: str) -> dict[str, Any]:
         "pat_name": None, "pat_addr": None, "pat_phone": None,
         "pres_name": None, "pres_addr": None, "pres_phone": None,
         "price": None, "ins_paid": None, "ins_code": None,
+        "inventory_bucket": None, "lot_no_exp_date": None,
     }
 
     ndc_m = _NDC_RE.search(ln)
@@ -226,6 +231,8 @@ def _parse_detail_row(ln: str) -> dict[str, Any]:
         disp["date_filled"] = rr.group("date")
         disp["rx_no"] = rr.group("rxno")
         disp["ref"] = rr.group("ref")
+        if rr.group("pat_name"):
+            disp["pat_name"] = re.sub(r"\s{2,}", " ", rr.group("pat_name")).strip()
         rest = rr.group("rest")
     else:
         rest = right
@@ -246,6 +253,8 @@ def _enrich_lookahead(lines: list[str], start_idx: int, disp: dict[str, Any]) ->
     """Fill pat_addr, pres_addr, phones, ins_code, qty_ord from lines after detail row."""
     addr_parts: list[str] = []
     pat_phone = pres_phone = ins_code = qty_ord = ""
+    inventory_bucket = ""
+    lot_no_exp_date = ""
 
     for j in range(start_idx + 1, min(start_idx + 20, len(lines))):
         l2 = lines[j]
@@ -266,7 +275,39 @@ def _enrich_lookahead(lines: list[str], start_idx: int, disp: dict[str, Any]) ->
                 ins_code = code_m.group(1).upper()
             if qtys:
                 qty_ord = qtys[-1]
-            break
+                qty_pos = l2.rfind(qty_ord)
+                if qty_pos != -1:
+                    post_qty = l2[qty_pos + len(qty_ord) :].strip()
+                    post_tokens = post_qty.split() if post_qty else []
+                    bucket_token = ""
+                    for token in reversed(post_tokens):
+                        if re.fullmatch(r"[A-Za-z][A-Za-z-]*", token):
+                            bucket_token = token
+                            break
+                    if bucket_token and bucket_token.lower() == "general":
+                        inventory_bucket = bucket_token
+                        bucket_idx = post_tokens.index(bucket_token)
+                        lot_tokens = [
+                            t for t in post_tokens[:bucket_idx]
+                            if re.search(r"[\d/\-]", t) or (len(t) >= 3 and not t.isalpha())
+                        ]
+                        if lot_tokens:
+                            lot_no_exp_date = " ".join(lot_tokens)
+                    else:
+                        lot_tokens = [
+                            t for t in post_tokens
+                            if re.search(r"[\d/\-]", t) or (len(t) >= 3 and not t.isalpha())
+                        ]
+                        if lot_tokens:
+                            lot_no_exp_date = " ".join(lot_tokens)
+            if not inventory_bucket:
+                tokens = l2.strip().split()
+                for token in reversed(tokens):
+                    if re.fullmatch(r"[A-Za-z][A-Za-z-]*", token) and token.lower() == "general":
+                        inventory_bucket = token
+                        break
+            if qtys or inventory_bucket or lot_no_exp_date:
+                break
 
         # Address line — may contain one or two addresses
         sz_count = len(list(_STATE_ZIP_RE.finditer(l2)))
@@ -288,6 +329,10 @@ def _enrich_lookahead(lines: list[str], start_idx: int, disp: dict[str, Any]) ->
         disp["ins_code"] = ins_code
     if qty_ord:
         disp["qty_ord"] = qty_ord
+    if inventory_bucket and not disp.get("inventory_bucket"):
+        disp["inventory_bucket"] = inventory_bucket
+    if lot_no_exp_date and not disp.get("lot_no_exp_date"):
+        disp["lot_no_exp_date"] = lot_no_exp_date
 
 
 # ──────────────────────────── totals block parser ─────────────────────────────
@@ -325,6 +370,10 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
         packs_m = re.search(r"Packs:\s*([\d.]+)", ln)
         if packs_m:
             rec["packs"] = packs_m.group(1)
+        if "Total For:" in ln:
+            rx_inline = re.search(r"\b(\d+)\s+Total\s+For:", ln)
+            if rx_inline:
+                rec["total_rx_count"] = rx_inline.group(1)
 
         prev_standalone_money = ""
 
@@ -336,7 +385,7 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
 
             if "Total For:" in l2:
                 # "N Total For:"  (blocks mode puts count before label)
-                rx_before = re.match(r"^\s*(\d+)\s+Total\s+For:", l2)
+                rx_before = re.search(r"\b(\d+)\s+Total\s+For:", l2)
                 if rx_before:
                     rec["total_rx_count"] = rx_before.group(1)
                 else:
@@ -348,12 +397,12 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
                     rec["total_price"] = _parse_money(m_here[0])
 
             elif "Total Ins Paid" in l2:
-                m2 = re.search(r"Total\s+Ins\s+Paid:\s*(\$[\d,]+\.?\d*)", l2, re.IGNORECASE)
+                m2 = re.search(r"Total\s+Ins\s+Paid:\s*(\$\s*[\d,]+\.?\d*)", l2, re.IGNORECASE)
                 if m2:
                     rec["total_ins_paid"] = _parse_money(m2.group(1))
 
             elif "Total Price" in l2:
-                m2 = re.search(r"Total\s+Price:\s*(\$[\d,]+\.?\d*)", l2, re.IGNORECASE)
+                m2 = re.search(r"Total\s+Price:\s*(\$\s*[\d,]+\.?\d*)", l2, re.IGNORECASE)
                 if m2:
                     rec["total_price"] = _parse_money(m2.group(1))
                 elif prev_standalone_money and rec["total_price"] is None:
@@ -366,7 +415,7 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
 
             else:
                 stripped = l2.strip()
-                if re.match(r"^\$[\d,]+\.?\d*$", stripped):
+                if re.match(r"^\$\s*[\d,]+\.?\d*$", stripped):
                     prev_standalone_money = stripped
 
         totals[ndc] = rec
@@ -391,7 +440,8 @@ def _parse_grand_total(lines: list[str]) -> dict[str, str | None]:
     if gt_start is None:
         return gt
 
-    tail = " ".join(lines[gt_start : gt_start + 15])
+    tail_lines = lines[gt_start : gt_start + 15]
+    tail = " ".join(tail_lines)
 
     rx_m = re.search(r"TotalRxCount:\s*(\d+)", tail)
     if rx_m:
@@ -401,16 +451,24 @@ def _parse_grand_total(lines: list[str]) -> dict[str, str | None]:
         if nums:
             gt["total_rx_count"] = nums[-1]
 
-    monies = _MONEY_RE.findall(tail)
-    tp_m = re.search(r"Total\s+Price:\s*(\$[\d,]+\.?\d*)", tail, re.IGNORECASE)
-    if tp_m:
-        gt["total_price"] = _parse_money(tp_m.group(1))
-    elif monies:
-        gt["total_price"] = _parse_money(monies[-1])
+    money_lines: list[tuple[str, str]] = []
+    for l2 in tail_lines:
+        m2 = _MONEY_RE.search(l2)
+        if m2:
+            money_lines.append((l2, m2.group(0)))
 
-    for v in monies:
-        if _parse_money(v) != gt["total_price"]:
-            gt["total_cost"] = _parse_money(v)
+    for l2, m2 in money_lines:
+        if "Total Price" in l2:
+            gt["total_price"] = _parse_money(m2)
+            break
+
+    if gt["total_price"] is None and money_lines:
+        gt["total_price"] = _parse_money(money_lines[-1][1])
+
+    for l2, m2 in money_lines:
+        parsed = _parse_money(m2)
+        if parsed != gt["total_price"]:
+            gt["total_cost"] = parsed
             break
 
     return gt
@@ -422,6 +480,8 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
     """
     Main entry point.  Accepts raw PDF bytes, returns structured report dict.
     """
+    start_time = time.perf_counter()
+    logger.info("PDF extraction started")
     lines = _extract_lines(pdf_bytes)
     full_text = "\n".join(lines)
     pharmacy = _parse_pharmacy_header(full_text)
@@ -430,7 +490,7 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
     lines = [ln for ln in lines if not _is_header_line(ln)]
 
     # Collect detail rows
-    detail_rows: list[tuple[int, str, str]] = []
+    detail_rows: list[tuple[int, str, str, str | None, str | None]] = []
     for i, ln in enumerate(lines):
         if any(ln.startswith(p) for p in _SKIP_PREFIXES):
             continue
@@ -450,6 +510,38 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
         drug_part = left[pats[-1].end() :].strip() if pats else left
         drug_name = re.sub(r"\s{2,}", " ", drug_part).strip()
 
+        # Some PDFs put "Pat Name + Drug Name" on the previous line
+        pat_name_override: str | None = None
+        bucket_override: str | None = None
+        prev_line = lines[i - 1] if i > 0 else ""
+        prev_pat = _PAT_NAME_RE.search(prev_line)
+        if prev_pat:
+            pat_name_override = re.sub(r"\s{2,}", " ", prev_pat.group(1)).strip()
+            if not drug_name:
+                prev_drug = prev_line[prev_pat.end() :].strip()
+                if prev_drug:
+                    drug_name = re.sub(r"\s{2,}", " ", prev_drug).strip()
+
+        # Inventory bucket is typically on a short line below the drug name
+        for j in range(i + 1, min(i + 6, len(lines))):
+            l2 = lines[j]
+            if _is_detail_row(l2) or _is_totals_boundary(l2):
+                break
+            if (
+                _DATE_RE.search(l2)
+                or _MONEY_RE.search(l2)
+                or _NDC_RE.search(l2)
+                or _PHONE_RE.search(l2)
+                or _INS_CODE_RE.search(l2)
+                or "," in l2
+            ):
+                continue
+            if re.fullmatch(r"[A-Za-z][A-Za-z -]{0,40}", l2.strip()):
+                candidate = l2.strip()
+                if candidate.lower() == "general":
+                    bucket_override = candidate
+                break
+
         # Look ahead for multi-line drug name continuation
         for j in range(i + 1, min(i + 5, len(lines))):
             l2 = lines[j]
@@ -458,15 +550,22 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
             # If it has specific data like date, money, NDC or phone, it's not a name continuation
             if _DATE_RE.search(l2) or _MONEY_RE.search(l2) or _NDC_RE.search(l2) or _PHONE_RE.search(l2):
                 break
+            # Do not append lines that contain address markers
+            if _STATE_ZIP_RE.search(l2) or _ADDR_KW_RE.search(l2):
+                break
             drug_name += " " + l2.strip()
 
         drug_name = re.sub(r"\s{2,}", " ", drug_name).strip()
-        detail_rows.append((i, drug_name, ndc))
+        detail_rows.append((i, drug_name, ndc, pat_name_override, bucket_override))
 
     # Build dispenses
     dispenses_by_key: dict[tuple[str, str], list[dict]] = {}
-    for line_idx, drug_name, ndc in detail_rows:
+    for line_idx, drug_name, ndc, pat_name_override, bucket_override in detail_rows:
         disp = _parse_detail_row(lines[line_idx])
+        if not disp.get("pat_name") and pat_name_override:
+            disp["pat_name"] = pat_name_override
+        if bucket_override and not disp.get("inventory_bucket"):
+            disp["inventory_bucket"] = bucket_override
         _enrich_lookahead(lines, line_idx, disp)
         dispenses_by_key.setdefault((drug_name, ndc), []).append(disp)
 
@@ -475,7 +574,7 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
     # Assemble medicines in order of first appearance
     seen: dict[tuple[str, str], bool] = {}
     ordered_keys: list[tuple[str, str]] = []
-    for _, dn, ndc in detail_rows:
+    for _, dn, ndc, _, _ in detail_rows:
         if (dn, ndc) not in seen:
             seen[(dn, ndc)] = True
             ordered_keys.append((dn, ndc))
@@ -483,11 +582,20 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
     medicines: list[dict[str, Any]] = []
     for drug_name, ndc in ordered_keys:
         t = totals_by_ndc.get(ndc, {})
+        dispenses = dispenses_by_key.get((drug_name, ndc), [])
+        inv_bucket = next(
+            (d.get("inventory_bucket") for d in dispenses if d.get("inventory_bucket")),
+            None,
+        )
+        lot_no_exp = next(
+            (d.get("lot_no_exp_date") for d in dispenses if d.get("lot_no_exp_date")),
+            None,
+        )
         medicines.append({
             "drug_name": drug_name,
             "ndc": ndc,
-            "inventory_bucket": None,
-            "lot_no_exp_date": None,
+            "inventory_bucket": inv_bucket,
+            "lot_no_exp_date": lot_no_exp,
             "totals": {
                 "packs": t.get("packs"),
                 "total_ins_paid": t.get("total_ins_paid"),
@@ -495,8 +603,18 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
                 "total_cost": t.get("total_cost"),
                 "total_rx_count": t.get("total_rx_count"),
             },
-            "dispenses": dispenses_by_key.get((drug_name, ndc), []),
+            "dispenses": dispenses,
         })
+
+    total_dispenses = sum(len(m.get("dispenses", [])) for m in medicines)
+    elapsed_ms = (time.perf_counter() - start_time) * 1000
+    logger.info(
+        "PDF extraction finished in {elapsed_ms:.1f} ms (lines={line_count}, medicines={med_count}, dispenses={disp_count})",
+        elapsed_ms=elapsed_ms,
+        line_count=len(lines),
+        med_count=len(medicines),
+        disp_count=total_dispenses,
+    )
 
     return {
         "pharmacy": pharmacy,
