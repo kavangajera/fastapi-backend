@@ -1,11 +1,19 @@
 import base64
 import json
-import requests
+import re
+from io import BytesIO
 from typing import Optional, Dict, Any
+from urllib.parse import quote
+
+import requests
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
+from loguru import logger
+from pyzbar.pyzbar import decode
+
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage
-from loguru import logger
+
 
 class ExtractedBarcodeData(BaseModel):
     ndc: Optional[str] = None
@@ -14,141 +22,510 @@ class ExtractedBarcodeData(BaseModel):
     sn: Optional[str] = None
     gtin: Optional[str] = None
 
-class BarcodeProcessorService:
-    def __init__(self, model_name: str = "qwen3.5:latest"):
-        self.model_name = model_name
-        # format="json" ensures the output is constrained to valid JSON
-        self.llm = ChatOllama(model=self.model_name, temperature=0, format="json")
 
-    def format_to_product_ndc(self, ndc: str) -> str:
-        """
-        Converts a 10-digit package NDC to hyphenated product NDC format.
-        Example: 6838209505 -> 68382-095
-        """
+class BarcodeProcessorService:
+
+    def __init__(self, model_name: str = "minicpm-v:latest"):
+
+        self.model_name = model_name
+
+        # Fallback vision model only
+        self.llm = ChatOllama(
+            model=self.model_name,
+            temperature=0,
+            format="json"
+        )
+
+    # =========================================================
+    # IMAGE LOADING
+    # =========================================================
+
+    def load_image_from_base64(self, image_base64: str):
+        # Allow data URLs like "data:image/png;base64,..." and plain base64.
+        if image_base64.startswith("data:"):
+            image_base64 = image_base64.split(",", 1)[-1]
+
+        image_bytes = base64.b64decode(image_base64)
+
+        # Register HEIC/HEIF support if available (optional dependency).
+        pillow_heif = None
+        try:
+            import pillow_heif  # type: ignore
+
+            pillow_heif.register_heif_opener()
+        except Exception:
+            pillow_heif = None
+
+        # HEIC/HEIF detection ("ftyp" brand in ISO BMFF header).
+        is_heif = (
+            len(image_bytes) > 12
+            and image_bytes[4:8] == b"ftyp"
+            and image_bytes[8:12] in {
+                b"heic",
+                b"heix",
+                b"hevc",
+                b"hevx",
+                b"mif1",
+                b"msf1",
+            }
+        )
+
+        if is_heif:
+            if not pillow_heif:
+                raise UnidentifiedImageError(
+                    "HEIC/HEIF upload requires pillow-heif"
+                )
+
+            heif_file = pillow_heif.read_heif(image_bytes)
+            pil_image = Image.frombytes(
+                heif_file.mode,
+                heif_file.size,
+                heif_file.data,
+                "raw",
+            ).convert("RGB")
+        else:
+            try:
+                pil_image = Image.open(
+                    BytesIO(image_bytes)
+                ).convert("RGB")
+            except UnidentifiedImageError as exc:
+                # Some clients send raw bytes that aren't base64; retry as-is.
+                try:
+                    pil_image = Image.open(
+                        BytesIO(image_base64.encode("utf-8"))
+                    ).convert("RGB")
+                except Exception:
+                    raise exc
+
+        return pil_image
+
+    def encode_pil_image_to_jpeg_base64(self, pil_image: Image.Image) -> str:
+        buffer = BytesIO()
+        pil_image.save(buffer, format="JPEG")
+        return base64.b64encode(
+            buffer.getvalue()
+        ).decode("utf-8")
+
+    # =========================================================
+    # FAST BARCODE SCANNER (pyzbar)
+    # =========================================================
+
+    def scan_barcode(self, pil_image: Image.Image) -> Dict[str, Any]:
+
+        logger.info("Scanning barcode using pyzbar...")
+
+        extracted = {
+            "ndc": None,
+            "gtin": None,
+            "raw_barcode": None
+        }
+
+        try:
+
+            decoded_items = decode(pil_image)
+
+            if not decoded_items:
+
+                logger.warning("No barcode detected.")
+
+                return extracted
+
+            for item in decoded_items:
+
+                barcode_data = (
+                    item.data.decode("utf-8", errors="ignore")
+                    if item.data
+                    else ""
+                )
+
+                barcode_data = barcode_data.strip()
+
+                if not barcode_data:
+                    continue
+
+                logger.info(
+                    f"Detected barcode: {barcode_data}"
+                )
+
+                extracted["raw_barcode"] = barcode_data
+
+                clean = re.sub(
+                    r"[^0-9]",
+                    "",
+                    barcode_data
+                )
+
+                # GTIN-14
+                if len(clean) == 14:
+
+                    extracted["gtin"] = clean
+
+                    # Derive NDC11
+                    extracted["ndc"] = clean[3:14]
+
+                # EAN-13 that represents UPC-A (leading zero)
+                elif len(clean) == 13 and clean.startswith("0"):
+
+                    upc = clean[1:]
+
+                    extracted["gtin"] = upc
+
+                    extracted["ndc"] = upc[1:11]
+
+                # UPC-A / GTIN-12
+                elif len(clean) == 12:
+
+                    extracted["gtin"] = clean
+
+                    extracted["ndc"] = clean[1:11]
+
+                # Direct NDC
+                elif len(clean) in [10, 11]:
+
+                    extracted["ndc"] = clean
+
+                break
+
+        except Exception as e:
+
+            logger.error(f"Barcode scanner failed: {e}")
+
+        return extracted
+
+    # =========================================================
+    # NORMALIZE PACKAGE NDC
+    # =========================================================
+
+    def normalize_package_ndc(self, ndc: str) -> str:
+
         if not ndc:
             return ""
-        # Remove any existing formatting
-        clean_ndc = ndc.replace("-", "").strip()
-        # If it's 10 digits or more, use the standard conversion logic: first 5, hyphen, next 3
-        if len(clean_ndc) >= 10:
-            return f"{clean_ndc[:5]}-{clean_ndc[5:8]}"
-        
-        return ndc
 
-    def process_barcode_image(self, image_path: str) -> Dict[str, Any]:
-        """
-        Process a local image file to extract barcode details and fetch FDA info.
-        """
-        with open(image_path, "rb") as image_file:
-            image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
-        
-        return self.process_barcode_base64(image_base64)
+        clean_ndc = re.sub(r"[^0-9]", "", ndc)
 
-    def process_barcode_base64(self, image_base64: str) -> Dict[str, Any]:
-        """
-        Process a base64 encoded image to extract barcode details and fetch FDA info.
-        """
+        # FDA normalized 11-digit
+        # Example:
+        # 00597015230 -> 0597-0152-30
+
+        if len(clean_ndc) == 11:
+
+            return (
+                f"{clean_ndc[1:5]}-"
+                f"{clean_ndc[5:9]}-"
+                f"{clean_ndc[9:11]}"
+            )
+
+        # 10-digit (default to 5-3-2)
+        if len(clean_ndc) == 10:
+
+            return (
+                f"{clean_ndc[:5]}-"
+                f"{clean_ndc[5:8]}-"
+                f"{clean_ndc[8:10]}"
+            )
+
+        # Already formatted
+        if ndc.count("-") == 2:
+            return ndc.strip()
+
+        return ndc.strip()
+
+    # =========================================================
+    # FALLBACK VISION LLM
+    # =========================================================
+
+    def fallback_llm_extraction(self, image_base64: str):
+
+        logger.warning(
+            "Falling back to vision LLM extraction..."
+        )
+
         prompt = """
-        Analyze the provided image of a medication barcode/package.
-        Extract the following details and return ONLY a structured JSON response with these exact keys:
-        - ndc (string, full numbers from NDC if found)
-        - exp (string, expiration date)
-        - lot (string, lot number)
-        - sn (string, serial number)
-        - gtin (string, Global Trade Item Number)
-        
-        If any value is not found, use null or an empty string.
-        Ensure the output is strictly valid JSON.
+        Analyze the medication image.
+
+        Return ONLY valid JSON:
+
+        {
+          "ndc": "...",
+          "exp": "...",
+          "lot": "...",
+          "sn": "...",
+          "gtin": "..."
+        }
+
+        Rules:
+        - preserve leading zeros
+        - no hallucinations
+        - use null if missing
         """
-        
+
         message = HumanMessage(
             content=[
-                {"type": "text", "text": prompt},
+                {
+                    "type": "text",
+                    "text": prompt
+                },
                 {
                     "type": "image_url",
-                    "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"},
+                    "image_url": {
+                        "url": (
+                            f"data:image/jpeg;base64,"
+                            f"{image_base64}"
+                        )
+                    },
                 },
             ]
         )
-        
-        logger.info(f"Invoking LLM ({self.model_name}) with image payload for barcode extraction...")
+
         response = self.llm.invoke([message])
-        logger.debug(f"Raw LLM response: {response.content}")
-        
+
+        content = response.content.strip()
+
+        if content.startswith("```json"):
+            content = content[7:]
+
+        if content.endswith("```"):
+            content = content[:-3]
+
+        content = content.strip()
+
         try:
-            content = response.content.strip()
-            # Handle potential markdown code block formatting
-            if content.startswith("```json"):
-                content = content[7:]
-            if content.endswith("```"):
-                content = content[:-3]
-            content = content.strip()
-            extracted_data = json.loads(content)
-            logger.info(f"Successfully parsed LLM JSON response: {extracted_data}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to decode JSON from LLM response: {e}")
-            extracted_data = {}
-            
-        original_ndc = str(extracted_data.get("ndc", "")).strip()
-        
-        # Fallback: if NDC is not found but GTIN is, we can often derive it.
-        # US NDCs are typically 10 digits.
-        # A 14-digit GTIN-14 (e.g. 00375907005305) contains the NDC at digits 4-13.
-        # A 12-digit UPC (e.g. 375907005305) contains the NDC at digits 2-11.
-        if not original_ndc and extracted_data.get("gtin"):
-            gtin = str(extracted_data.get("gtin", "")).strip()
-            if len(gtin) == 14 and gtin.isdigit():
-                original_ndc = gtin[3:13]
-                logger.info(f"Derived NDC {original_ndc} from 14-digit GTIN {gtin}")
-            elif len(gtin) == 12 and gtin.isdigit():
-                original_ndc = gtin[1:11]
-                logger.info(f"Derived NDC {original_ndc} from 12-digit UPC/GTIN {gtin}")
-                
-        logger.info(f"Original NDC extracted/derived: {original_ndc}")
-        
-        product_ndc = self.format_to_product_ndc(str(original_ndc)) if original_ndc else ""
-        logger.info(f"Formatted product NDC: {product_ndc}")
-        
-        fda_data = None
-        if product_ndc:
-            fda_url = f'https://api.fda.gov/drug/ndc.json?search=product_ndc:"{product_ndc}"'
-            logger.info(f"Querying FDA API: {fda_url}")
+
+            parsed = json.loads(content)
+
+            logger.info(
+                f"LLM extraction success: {parsed}"
+            )
+
+            return parsed
+
+        except Exception as e:
+
+            logger.error(
+                f"Failed to parse LLM JSON: {e}"
+            )
+
+            return {}
+
+    # =========================================================
+    # FDA LOOKUP
+    # =========================================================
+
+    def build_ndc_candidates(self, ndc: str) -> list[str]:
+        clean_ndc = re.sub(r"[^0-9]", "", ndc or "")
+
+        if not clean_ndc:
+            return []
+
+        if len(clean_ndc) == 11:
+            return [
+                f"{clean_ndc[1:5]}-{clean_ndc[5:9]}-{clean_ndc[9:11]}"
+            ]
+
+        if len(clean_ndc) == 10:
+            return [
+                f"{clean_ndc[:4]}-{clean_ndc[4:8]}-{clean_ndc[8:10]}",
+                f"{clean_ndc[:5]}-{clean_ndc[5:8]}-{clean_ndc[8:10]}",
+                f"{clean_ndc[:5]}-{clean_ndc[5:9]}-{clean_ndc[9:10]}",
+            ]
+
+        return [self.normalize_package_ndc(clean_ndc)]
+
+    def query_fda(self, package_ndc: str):
+
+        if not package_ndc:
+            return None, None, None
+
+        last_error = None
+        last_url = None
+
+        for candidate in self.build_ndc_candidates(package_ndc):
+            search_query = (
+                f'packaging.package_ndc:"{candidate}"'
+            )
+
+            encoded_query = quote(search_query)
+
+            fda_url = (
+                "https://api.fda.gov/drug/ndc.json"
+                f"?search={encoded_query}"
+            )
+
+            logger.info(f"FDA query URL: {fda_url}")
+
             try:
-                fda_resp = requests.get(fda_url)
-                logger.info(f"FDA API response status: {fda_resp.status_code}")
-                if fda_resp.status_code == 200:
-                    fda_data = fda_resp.json()
-                else:
-                    logger.warning(f"FDA API returned non-200 status: {fda_resp.status_code} - {fda_resp.text}")
-                    fda_data = {"error": f"FDA API returned status {fda_resp.status_code}", "details": fda_resp.text}
+
+                response = requests.get(
+                    fda_url,
+                    timeout=30
+                )
+
+                logger.info(
+                    f"FDA response status: "
+                    f"{response.status_code}"
+                )
+
+                if response.status_code == 200:
+
+                    return response.json(), fda_url, candidate
+
+                last_error = response.text
+                last_url = fda_url
+
+                logger.warning(
+                    f"FDA API error: {response.text}"
+                )
+
             except Exception as e:
-                logger.error(f"Error querying FDA API: {e}")
-                fda_data = {"error": str(e)}
-                
-        logger.info("Barcode processing complete.")
-        # Update the extracted data dict so the client sees the derived NDC
-        if original_ndc:
-            extracted_data["ndc"] = original_ndc
-            
+
+                last_error = str(e)
+                last_url = fda_url
+
+                logger.error(f"FDA request failed: {e}")
+
         return {
-            "extracted_data": extracted_data,
-            "product_ndc": product_ndc,
+            "error": last_error
+        }, last_url, None
+
+    # =========================================================
+    # MAIN PIPELINE
+    # =========================================================
+
+    def process_barcode_base64(self, image_base64: str):
+
+        pil_image = self.load_image_from_base64(
+            image_base64
+        )
+
+        # -----------------------------------------------------
+        # FAST BARCODE SCAN
+        # -----------------------------------------------------
+
+        barcode_data = self.scan_barcode(pil_image)
+
+        ndc = barcode_data.get("ndc")
+
+        # -----------------------------------------------------
+        # FALLBACK TO LLM
+        # -----------------------------------------------------
+
+        llm_data = {}
+
+        if not ndc:
+            # Ensure LLM receives a JPEG, since some backends
+            # do not accept HEIC/HEIF input.
+            llm_image_base64 = self.encode_pil_image_to_jpeg_base64(
+                pil_image
+            )
+
+            llm_data = self.fallback_llm_extraction(
+                llm_image_base64
+            )
+
+            ndc = llm_data.get("ndc")
+
+        # -----------------------------------------------------
+        # NORMALIZE NDC
+        # -----------------------------------------------------
+
+        package_ndc = None
+
+        if ndc:
+
+            package_ndc = self.normalize_package_ndc(
+                str(ndc)
+            )
+
+        logger.info(
+            f"Normalized package NDC: {package_ndc}"
+        )
+
+        # -----------------------------------------------------
+        # FDA LOOKUP
+        # -----------------------------------------------------
+
+        fda_data, fda_url, matched_package_ndc = self.query_fda(
+            package_ndc
+        )
+
+        if matched_package_ndc:
+            package_ndc = matched_package_ndc
+
+        # -----------------------------------------------------
+        # FINAL RESPONSE
+        # -----------------------------------------------------
+
+        final_data = {
+            "ndc": ndc,
+            "package_ndc": package_ndc,
+            "gtin": (
+                barcode_data.get("gtin")
+                or llm_data.get("gtin")
+            ),
+            "exp": llm_data.get("exp"),
+            "lot": llm_data.get("lot"),
+            "sn": llm_data.get("sn")
+        }
+
+        logger.info("Processing complete.")
+
+        return {
+            "extracted_data": final_data,
+            "fda_url": fda_url,
             "fda_data": fda_data
         }
 
+    # =========================================================
+    # IMAGE FILE INPUT
+    # =========================================================
+
+    def process_barcode_image(self, image_path: str):
+
+        with open(image_path, "rb") as image_file:
+
+            image_base64 = base64.b64encode(
+                image_file.read()
+            ).decode("utf-8")
+
+        return self.process_barcode_base64(
+            image_base64
+        )
+
+
+# =============================================================
+# MAIN
+# =============================================================
+
 if __name__ == "__main__":
-    import sys
+
     import os
-    
+    import sys
+
     processor = BarcodeProcessorService()
-    # Default to the image in the root directory if not specified
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    default_image = os.path.join(base_dir, "image.png")
-    
-    image_to_test = sys.argv[1] if len(sys.argv) > 1 else default_image
-    
+
+    base_dir = os.path.dirname(
+        os.path.abspath(__file__)
+    )
+
+    default_image = os.path.join(
+        base_dir,
+        "image.png"
+    )
+
+    image_to_test = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else default_image
+    )
+
     try:
-        result = processor.process_barcode_image(image_to_test)
+
+        result = processor.process_barcode_image(
+            image_to_test
+        )
+
         print(json.dumps(result, indent=2))
+
     except Exception as e:
+
         print(f"Error processing image: {e}")
