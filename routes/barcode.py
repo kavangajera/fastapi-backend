@@ -7,7 +7,7 @@ from loguru import logger
 router = APIRouter(prefix="/barcode", tags=["Barcode Processing"])
 
 # Initialize the processor service
-processor = BarcodeProcessorService(model_name="qwen3.5:latest")
+processor = BarcodeProcessorService(model_name="minicpm-v:latest")
 
 @router.post("/process-image")
 async def process_barcode_image(file: UploadFile = File(...)):
