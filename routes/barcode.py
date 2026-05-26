@@ -1,13 +1,13 @@
 import base64
 import traceback
 from fastapi import APIRouter, UploadFile, File, HTTPException
-from services.llm_vision_barcode_processor import BarcodeProcessorService
+from services.barcode_scanner import BarcodeScannerService
 from loguru import logger
 
 router = APIRouter(prefix="/barcode", tags=["Barcode Processing"])
 
 # Initialize the processor service
-processor = BarcodeProcessorService(model_name="minicpm-v:latest")
+processor = BarcodeScannerService()
 
 @router.post("/process-image")
 async def process_barcode_image(file: UploadFile = File(...)):
