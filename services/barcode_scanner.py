@@ -9,7 +9,30 @@ import requests
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
 from loguru import logger
-from pyzbar.pyzbar import decode
+# Lazy import: pyzbar requires the native `zbar` shared library.
+# On macOS: brew install zbar
+# On Debian/Ubuntu: apt-get install libzbar0
+# On Alpine: apk add zbar
+# We defer the ImportError so the app can still start even without it;
+# the error surfaces only when the barcode endpoint is actually called.
+try:
+    from pyzbar.pyzbar import decode as _pyzbar_decode
+    _PYZBAR_AVAILABLE = True
+except ImportError:
+    _pyzbar_decode = None  # type: ignore[assignment]
+    _PYZBAR_AVAILABLE = False
+
+
+def _decode_barcode(image):
+    """Wrapper around pyzbar.decode that raises a clear error if zbar is missing."""
+    if not _PYZBAR_AVAILABLE:
+        raise RuntimeError(
+            "Barcode scanning requires the 'zbar' shared library. "
+            "Install it with: brew install zbar (macOS) | "
+            "apt-get install libzbar0 (Debian/Ubuntu) | "
+            "apk add zbar (Alpine)"
+        )
+    return _pyzbar_decode(image)
 
 
 class ExtractedBarcodeData(BaseModel):
@@ -99,7 +122,7 @@ class BarcodeScannerService:
         }
 
         try:
-            decoded_items = decode(pil_image)
+            decoded_items = _decode_barcode(pil_image)
 
             if not decoded_items:
                 logger.warning("No barcode detected.")

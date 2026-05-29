@@ -136,16 +136,16 @@ def _build_dispense(disp_data: dict, medicine: Medicine) -> Dispense:
     "/upload",
     response_model=UploadBatchSummary,
     status_code=status.HTTP_201_CREATED,
-    summary="Upload a Drug Dispensed Report (PDF / DOCX / DOC)",
+    summary="Upload a Drug Dispensed Report (PDF / DOCX / DOC / XLSX / XLS)",
     description=(
         "Upload a Drug Dispensed Report exported from the pharmacy system. "
-        "Accepted formats: .pdf (text-based), .docx, and .doc (RTF). "
+        "Accepted formats: .pdf (text-based), .docx, .doc (RTF), .xlsx, and .xls. "
         "The service extracts all prescription data and stores it in the database. "
         "Returns a confirmation summary with counts and totals."
     ),
 )
 async def upload_report(
-    files: List[UploadFile] = File(..., description="Up to 10 reports (.pdf, .docx, or .doc)"),
+    files: List[UploadFile] = File(..., description="Up to 10 reports (.pdf, .docx, .doc, .xlsx, or .xls)"),
     db: Session = Depends(get_db),
 ):
     if len(files) > settings.REPORT_MAX_FILES:
