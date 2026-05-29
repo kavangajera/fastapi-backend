@@ -198,21 +198,19 @@ USER_PROMPT = (
 # Provider settings (env-driven)
 # ─────────────────────────────────────────────────────────────────────────────
 
-PROVIDER = os.getenv("PROVIDER", "ollama").lower()
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "")
-OPENROUTER_BASE_URL = os.getenv(
-    "OPENROUTER_BASE_URL",
-    "https://openrouter.ai/api/v1",
-)
-OPENROUTER_MODEL = os.getenv(
-    "OPENROUTER_MODEL",
-    "qwen/qwen2.5-vl-72b",
-)
+def _env(name: str, default: str) -> str:
+    return os.getenv(name, default)
 
 
-def _active_provider_model(default_model: str) -> tuple[str, str]:
-    if PROVIDER == "openrouter":
-        return "openrouter", (OPENROUTER_MODEL or default_model)
+def _active_provider_model(
+    default_model: str,
+    provider: Optional[str] = None,
+    openrouter_model: Optional[str] = None,
+) -> tuple[str, str]:
+    resolved_provider = (provider or _env("PROVIDER", "ollama")).lower()
+    if resolved_provider == "openrouter":
+        model = openrouter_model or _env("OPENROUTER_MODEL", "qwen/qwen2.5-vl-72b")
+        return "openrouter", (model or default_model)
     return "ollama", default_model
 
 
@@ -293,26 +291,39 @@ def call_llm_single_page(
     model: str,
     ollama_url: str,
     temperature: float,
+    provider: Optional[str] = None,
+    openrouter_api_key: Optional[str] = None,
+    openrouter_base_url: Optional[str] = None,
+    openrouter_model: Optional[str] = None,
 ) -> dict:
     """
     Send ONE page image to the model and return a parsed dict.
     Soft-fails (returns {}) on empty response or bad JSON
     so one bad page doesn't crash the whole run.
     """
-    provider, model_used = _active_provider_model(model)
+    provider, model_used = _active_provider_model(
+        model,
+        provider=provider,
+        openrouter_model=openrouter_model,
+    )
     logger.info(
         f"Page {page_num}/{total_pages} → {provider}:{model_used} "
         f"(image: {page.size[0]}x{page.size[1]}px)"
     )
 
-    if PROVIDER == "openrouter":
-        if not OPENROUTER_API_KEY:
+    if provider == "openrouter":
+        api_key = openrouter_api_key or _env("OPENROUTER_API_KEY", "")
+        base_url = openrouter_base_url or _env(
+            "OPENROUTER_BASE_URL",
+            "https://openrouter.ai/api/v1",
+        )
+        if not api_key:
             logger.error("OpenRouter selected but OPENROUTER_API_KEY is missing")
             return {}
         llm = ChatOpenAI(
-            model=OPENROUTER_MODEL or model,
-            api_key=OPENROUTER_API_KEY,
-            base_url=OPENROUTER_BASE_URL,
+            model=openrouter_model or model,
+            api_key=api_key,
+            base_url=base_url,
             temperature=temperature,
             max_tokens=4096,
             default_headers={
@@ -460,12 +471,20 @@ def call_llm(
     model: str,
     ollama_url: str,
     temperature: float,
+    provider: Optional[str] = None,
+    openrouter_api_key: Optional[str] = None,
+    openrouter_base_url: Optional[str] = None,
+    openrouter_model: Optional[str] = None,
 ) -> dict:
     """
     Send each page individually and merge results.
     Safe for any model size — no context overload.
     """
-    provider, model_used = _active_provider_model(model)
+    provider, model_used = _active_provider_model(
+        model,
+        provider=provider,
+        openrouter_model=openrouter_model,
+    )
     logger.info(
         f"Chunked extraction: {len(pages)} page(s) × 1 image/call → "
         f"{provider}:{model_used}"
@@ -480,6 +499,10 @@ def call_llm(
             model=model,
             ollama_url=ollama_url,
             temperature=temperature,
+            provider=provider,
+            openrouter_api_key=openrouter_api_key,
+            openrouter_base_url=openrouter_base_url,
+            openrouter_model=openrouter_model,
         )
         pages_data.append(result)
 
@@ -554,13 +577,26 @@ class InvoiceParser:
         temperature: float = 0.0,
         dpi_scale: float = 2.0,
         max_dim: int = 1024,
+        provider: Optional[str] = None,
+        openrouter_api_key: Optional[str] = None,
+        openrouter_base_url: Optional[str] = None,
+        openrouter_model: Optional[str] = None,
     ):
         self.model = model
         self.ollama_url = ollama_url
         self.temperature = temperature
         self.dpi_scale = dpi_scale
         self.max_dim = max_dim
-        provider, model_used = _active_provider_model(model)
+        self.provider = provider
+        self.openrouter_api_key = openrouter_api_key
+        self.openrouter_base_url = openrouter_base_url
+        self.openrouter_model = openrouter_model
+
+        provider, model_used = _active_provider_model(
+            model,
+            provider=provider,
+            openrouter_model=openrouter_model,
+        )
         provider_details = (
             f"provider={provider} | model={model_used}"
             if provider == "openrouter"
@@ -585,6 +621,10 @@ class InvoiceParser:
             model=self.model,
             ollama_url=self.ollama_url,
             temperature=self.temperature,
+            provider=self.provider,
+            openrouter_api_key=self.openrouter_api_key,
+            openrouter_base_url=self.openrouter_base_url,
+            openrouter_model=self.openrouter_model,
         )
 
         logger.info("Validating against schema...")

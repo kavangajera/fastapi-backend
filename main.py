@@ -1,21 +1,23 @@
 from fastapi import FastAPI, APIRouter
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi import HTTPException
-import fastapi_swagger_dark as fsd
-from sqlalchemy import text
+from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.logging import setup_logging
 from routes import router
 from routes.pharmacy_purchase_report import router as report_router
 from routes.barcode import router as barcode_router
+from routes.invoice import router as invoice_router
 from middlewares import auth
 
 setup_logging()
 app = FastAPI(
     title="Queue RX API",
     version="1.0.0",
+    docs_url=None,
+    redoc_url=None,
     description="""
 Queue RX is a pharmacy queue management backend API.
 
@@ -54,6 +56,84 @@ Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-acces
         },
     ],
 )
+
+
+@app.get("/docs", include_in_schema=False)
+def custom_swagger_ui_html():
+        swagger_ui = get_swagger_ui_html(
+                openapi_url=app.openapi_url,
+                title="Queue RX API Docs",
+        )
+        html = swagger_ui.body.decode("utf-8")
+
+        inject = """
+<script>
+function setupBarcodeMultiUpload() {
+    const opBlocks = document.querySelectorAll('.opblock');
+    opBlocks.forEach(block => {
+        const summary = block.querySelector('.opblock-summary-path');
+        if (!summary || !summary.textContent) return;
+        if (!summary.textContent.includes('/barcode/verify-batch')) return;
+
+        const body = block.querySelector('.opblock-body');
+        if (!body) return;
+
+        const addButtons = body.querySelectorAll('button');
+        addButtons.forEach(btn => {
+            if (btn.textContent && btn.textContent.toLowerCase().includes('add string item')) {
+                btn.style.display = 'none';
+            }
+        });
+
+        if (body.querySelector('.barcode-multi-upload')) return;
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'barcode-multi-upload';
+        wrapper.style.margin = '12px 0';
+        wrapper.innerHTML = `
+            <div style="font-weight:600; margin-bottom:6px;">Multi-file upload</div>
+            <input type="file" id="barcode-multi-input" multiple />
+            <button type="button" id="barcode-multi-submit" style="margin-left:8px;">Upload</button>
+            <pre id="barcode-multi-output" style="margin-top:8px; white-space:pre-wrap;"></pre>
+        `;
+        body.prepend(wrapper);
+
+        const input = wrapper.querySelector('#barcode-multi-input');
+        const button = wrapper.querySelector('#barcode-multi-submit');
+        const output = wrapper.querySelector('#barcode-multi-output');
+
+        button.addEventListener('click', async () => {
+            if (!input || !input.files || input.files.length === 0) {
+                output.textContent = 'Select one or more files first.';
+                return;
+            }
+            const formData = new FormData();
+            Array.from(input.files).forEach(file => formData.append('files', file));
+
+            output.textContent = 'Uploading...';
+            try {
+                const res = await fetch('/barcode/verify-batch', {
+                    method: 'POST',
+                    body: formData,
+                });
+                const text = await res.text();
+                output.textContent = text;
+            } catch (err) {
+                output.textContent = 'Upload failed: ' + err;
+            }
+        });
+    });
+}
+
+window.addEventListener('load', () => {
+    const interval = setInterval(() => {
+        setupBarcodeMultiUpload();
+    }, 500);
+});
+</script>
+"""
+        html = html.replace("</body>", inject + "</body>")
+        return HTMLResponse(html)
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request, exc: RequestValidationError):
@@ -100,6 +180,7 @@ app.add_middleware(
 app.include_router(router)
 app.include_router(report_router)
 app.include_router(barcode_router)
+app.include_router(invoice_router)
 @app.get("/")
 async def welcome():
     return {"message": "Welcome to Queue RX!"}

@@ -1,3 +1,4 @@
+from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
@@ -8,9 +9,19 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
+    INVOICE_PROVIDER: str = Field(default="openrouter", validation_alias="PROVIDER")
+    OPENROUTER_API_KEY: str = ""
+    OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
+    OPENROUTER_MODEL: str = "qwen/qwen3-vl-8b"
+    INVOICE_MAX_FILES: int = 10
+    INVOICE_MAX_PAGES: int = 15
+    BARCODE_MAX_FILES: int = 50
+    REPORT_MAX_FILES: int = 10
+    APP_TIMEZONE: str = "Asia/Kolkata"
+    DATAMATRIX_DEBUG: bool = False
+    DATAMATRIX_DEBUG_DIR: str = "logs/datamatrix_debug"
 
-    class Config:
-        env_file = ".env"
+    model_config = ConfigDict(extra="forbid", env_file=".env")
 
 settings = Settings()
 print("SETTINGS LOADED:", settings.model_dump())

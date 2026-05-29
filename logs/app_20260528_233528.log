@@ -1,0 +1,134 @@
+2026-05-28 23:35:43 | INFO     | Invoice upload started: safepdfkit (1).pdf pages=1
+2026-05-28 23:35:43 | INFO     | InvoiceParser ready | provider=openrouter | model=qwen/qwen3-vl-8b-instruct | dpi=2.0 | max_dim=1024 | chunked=True (1 page/call)
+2026-05-28 23:35:43 | INFO     | Starting extraction: /var/folders/yb/980m32yn20d916_vk3nbh2580000gp/T/tmpv2yf5p3y.pdf
+2026-05-28 23:35:43 | INFO     | Opening PDF: /var/folders/yb/980m32yn20d916_vk3nbh2580000gp/T/tmpv2yf5p3y.pdf
+2026-05-28 23:35:43 | INFO     | Total pages: 1
+2026-05-28 23:35:43 | INFO     | Page 1: final size 810x1024px
+2026-05-28 23:35:43 | INFO     | Chunked extraction: 1 page(s) × 1 image/call → openrouter:qwen/qwen3-vl-8b-instruct
+2026-05-28 23:35:43 | INFO     | Page 1/1 → openrouter:qwen/qwen3-vl-8b-instruct (image: 810x1024px)
+2026-05-28 23:35:58 | INFO     | Page 1: parsed OK — 5 line item(s)
+2026-05-28 23:35:58 | INFO     | Merge complete: 5 total line item(s) from 1 page(s)
+2026-05-28 23:35:58 | INFO     | Validating against schema...
+2026-05-28 23:35:58 | INFO     | Schema validation passed — 5 line item(s)
+2026-05-28 23:35:58 | INFO     | ════════════════════════════════════════════════════════════════════════════════
+2026-05-28 23:35:58 | INFO     |   PARSED INVOICE SUMMARY
+2026-05-28 23:35:58 | INFO     | ════════════════════════════════════════════════════════════════════════════════
+2026-05-28 23:35:58 | INFO     |   Seller   : None
+2026-05-28 23:35:58 | INFO     |   Address  : None
+2026-05-28 23:35:58 | INFO     |   Phone    : None
+2026-05-28 23:35:58 | INFO     |   DEA      : None
+2026-05-28 23:35:58 | INFO     |   Permit   : None
+2026-05-28 23:35:58 | INFO     | ────────────────────────────────────────────────────────────────────────────────
+2026-05-28 23:35:58 | INFO     |   Invoice# : INV-2026-45821
+2026-05-28 23:35:58 | INFO     |   Date     : 05/28/2026
+2026-05-28 23:35:58 | INFO     |   Order#   : None
+2026-05-28 23:35:58 | INFO     |   Terms    : Net 30
+2026-05-28 23:35:58 | INFO     |   Due Date : None
+2026-05-28 23:35:58 | INFO     | ────────────────────────────────────────────────────────────────────────────────
+2026-05-28 23:35:58 | INFO     |   Customer : Sunrise Care Pharmacy
+2026-05-28 23:35:58 | INFO     |   Cust DEA : BS4587211
+2026-05-28 23:35:58 | INFO     |   State Reg: None
+2026-05-28 23:35:58 | INFO     |   Bill To  : None | None
+2026-05-28 23:35:58 | INFO     |   Ship To  : None | None
+2026-05-28 23:35:58 | INFO     | ────────────────────────────────────────────────────────────────────────────────
+2026-05-28 23:35:58 | INFO     |   Line Items: 5
+2026-05-28 23:35:58 | INFO     |      #  ITEM          NDC                  QTY       UNIT        EXT  DESCRIPTION
+2026-05-28 23:35:58 | INFO     |   ────────────────────────────────────────────────────────────────────────────
+2026-05-28 23:35:58 | INFO     |      1  —             68382009501          120     $12.50   $1500.00  Amoxicillin 500mg Capsules
+2026-05-28 23:35:58 | INFO     |      2  —             50742062201          200      $8.90   $1780.00  Metformin HCL 1000mg Tablets
+2026-05-28 23:35:58 | INFO     |      3  —             69452031220          150     $15.75   $2362.50  Atorvastatin 20mg Tablets
+2026-05-28 23:35:58 | INFO     |      4  —             4217                  40      $5.50    $220.00  Sterile Gloves Box
+2026-05-28 23:35:58 | INFO     |      5  —             8842                  25     $18.00    $450.00  Digital Thermometer
+2026-05-28 23:35:58 | INFO     | ────────────────────────────────────────────────────────────────────────────────
+2026-05-28 23:35:58 | INFO     |   Order Line Total : $6312.50
+2026-05-28 23:35:58 | INFO     |   Fuel Surcharge   : None
+2026-05-28 23:35:58 | INFO     |   Sub Total        : None
+2026-05-28 23:35:58 | INFO     |   Tax              : None
+2026-05-28 23:35:58 | INFO     |   Grand Total      : $6312.50
+2026-05-28 23:35:58 | INFO     |   Total Due By     : None
+2026-05-28 23:35:58 | INFO     | ────────────────────────────────────────────────────────────────────────────────
+2026-05-28 23:35:58 | INFO     |   Remit To : None | None
+2026-05-28 23:35:58 | INFO     | ════════════════════════════════════════════════════════════════════════════════
+2026-05-28 23:35:58 | INFO     | Extraction complete.
+2026-05-28 23:35:58 | INFO     | Invoice header extracted: fields=['bill_to_address', 'bill_to_name', 'customer_dea', 'customer_name', 'customer_number', 'customer_state_reg', 'due_date', 'invoice_date', 'invoice_number', 'order_number', 'remit_to_address', 'remit_to_name', 'remit_to_phone', 'seller_address', 'seller_dea', 'seller_fed_id', 'seller_name', 'seller_permit', 'seller_phone', 'ship_to_address', 'ship_to_name', 'terms_of_payment', 'your_order_number'] missing=['seller_name', 'seller_address', 'seller_phone', 'seller_dea', 'seller_permit', 'seller_fed_id', 'order_number', 'due_date', 'your_order_number', 'customer_number', 'customer_state_reg', 'bill_to_name', 'bill_to_address', 'ship_to_name', 'ship_to_address', 'remit_to_name', 'remit_to_address', 'remit_to_phone']
+2026-05-28 23:35:58 | INFO     | Invoice summary extracted: fields=['fuel_surcharge', 'grand_total', 'order_line_total', 'sub_total', 'tax', 'total_due_by'] missing=['fuel_surcharge', 'sub_total', 'tax', 'total_due_by']
+2026-05-28 23:35:58 | INFO     | Line item 1 extracted: ndc=68382009501 item_code=None missing=['item_code', 'orig_order_qty', 'order_qty', 'uom', 'size', 'form', 'awp', 'note_code']
+2026-05-28 23:35:58 | INFO     | Line item 2 extracted: ndc=50742062201 item_code=None missing=['item_code', 'orig_order_qty', 'order_qty', 'uom', 'size', 'form', 'awp', 'note_code']
+2026-05-28 23:35:58 | INFO     | Line item 3 extracted: ndc=69452031220 item_code=None missing=['item_code', 'orig_order_qty', 'order_qty', 'uom', 'size', 'form', 'awp', 'note_code']
+2026-05-28 23:35:58 | INFO     | Line item 4 extracted: ndc=4217 item_code=None missing=['item_code', 'orig_order_qty', 'order_qty', 'uom', 'size', 'form', 'awp', 'note_code']
+2026-05-28 23:35:58 | INFO     | Line item 5 extracted: ndc=8842 item_code=None missing=['item_code', 'orig_order_qty', 'order_qty', 'uom', 'size', 'form', 'awp', 'note_code']
+2026-05-28 23:36:02 | INFO     | Stored invoice: filename=safepdfkit (1).pdf lines=5
+2026-05-28 23:36:46 | INFO     | Processing uploaded image: 20260331_181104209_iOS.heic (image/heic)
+2026-05-28 23:36:46 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 23:36:47 | INFO     | Detected barcode: 0368382095053
+2026-05-28 23:36:47 | INFO     | Normalized package NDC: 68382-095-05
+2026-05-28 23:36:47 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226838-2095-05%22
+2026-05-28 23:36:48 | INFO     | FDA response status: 404
+2026-05-28 23:36:48 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 23:36:48 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2268382-095-05%22
+2026-05-28 23:36:49 | INFO     | FDA response status: 200
+2026-05-28 23:36:49 | INFO     | Processing complete.
+2026-05-28 23:37:24 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 23:37:24 | INFO     | Detected barcode: 0368382095053
+2026-05-28 23:37:24 | INFO     | Normalized package NDC: 68382-095-05
+2026-05-28 23:37:24 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226838-2095-05%22
+2026-05-28 23:37:25 | INFO     | FDA response status: 404
+2026-05-28 23:37:25 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 23:37:25 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2268382-095-05%22
+2026-05-28 23:37:27 | INFO     | FDA response status: 200
+2026-05-28 23:37:27 | INFO     | Processing complete.
+2026-05-28 23:37:27 | INFO     | DataMatrix scan: 20260331_181104209_iOS.heic gtin=00368382095053 serial=30200524124720172704 exp=2027-04-30 lot=03683820950532130200
+2026-05-28 23:37:27 | INFO     | OK BARCODE_OK: 20260331_181104209_iOS.heic ndc10=68382-095-01 -> ndc11=68382009501
+2026-05-28 23:37:28 | INFO     | OK MATCH_OK: 20260331_181104209_iOS.heic ndc11=68382009501 updated=1
+2026-05-28 23:37:57 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 23:37:58 | INFO     | Detected barcode: 0350742622016
+2026-05-28 23:37:58 | INFO     | Normalized package NDC: 50742-622-01
+2026-05-28 23:37:58 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%225074-2622-01%22
+2026-05-28 23:37:59 | INFO     | FDA response status: 404
+2026-05-28 23:37:59 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 23:37:59 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2250742-622-01%22
+2026-05-28 23:38:01 | INFO     | FDA response status: 200
+2026-05-28 23:38:01 | INFO     | Processing complete.
+2026-05-28 23:38:02 | INFO     | DataMatrix scan: 20260331_181500907_iOS.heic gtin=00350742622016 serial=20000027040817270531 exp=2027-05-31 lot=03507426220162120000
+2026-05-28 23:38:02 | INFO     | OK BARCODE_OK: 20260331_181500907_iOS.heic ndc10=50742-622-01 -> ndc11=50742062201
+2026-05-28 23:38:02 | INFO     | OK MATCH_OK: 20260331_181500907_iOS.heic ndc11=50742062201 updated=1
+2026-05-28 23:38:21 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 23:38:21 | INFO     | Detected barcode: 0369452312209
+2026-05-28 23:38:21 | INFO     | Normalized package NDC: 69452-312-20
+2026-05-28 23:38:21 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226945-2312-20%22
+2026-05-28 23:38:23 | INFO     | FDA response status: 404
+2026-05-28 23:38:23 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 23:38:23 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2269452-312-20%22
+2026-05-28 23:38:24 | INFO     | FDA response status: 200
+2026-05-28 23:38:24 | INFO     | Processing complete.
+2026-05-28 23:38:25 | INFO     | DataMatrix scan: 20260331_181536749_iOS.heic gtin=00369452312209 serial=1SGKC1XE3ZFK17270531 exp=2027-05-31 lot=0369452312209211SGKC
+2026-05-28 23:38:25 | INFO     | OK BARCODE_OK: 20260331_181536749_iOS.heic ndc10=69452-312-20 -> ndc11=69452031220
+2026-05-28 23:38:25 | INFO     | OK MATCH_OK: 20260331_181536749_iOS.heic ndc11=69452031220 updated=1
+2026-05-28 23:38:49 | INFO     | Report upload started: dummy_dispense_report.pdf (2712 bytes)
+2026-05-28 23:38:49 | INFO     | Dispatching extraction for 'dummy_dispense_report.pdf' (detected type: .pdf)
+2026-05-28 23:38:49 | INFO     | PDF extraction started
+2026-05-28 23:38:49 | INFO     | PDF extraction finished in 7.6 ms (lines=12, medicines=0, dispenses=0)
+2026-05-28 23:38:49 | INFO     | Parsed report: medicines=0, dispenses=0
+2026-05-28 23:38:49 | INFO     | Report header extracted: missing=['pharmacy_name', 'address', 'phone', 'fax', 'report_date', 'report_from_date', 'report_to_date']
+2026-05-28 23:38:49 | INFO     | Report grand totals extracted: missing=['total_cost']
+2026-05-28 23:38:52 | INFO     | Report stored: report_id=32, medicines=0, dispenses=0

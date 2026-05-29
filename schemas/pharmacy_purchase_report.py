@@ -110,6 +110,11 @@ class UploadSummary(BaseModel):
     message: str = "PDF processed and stored successfully."
 
 
+class UploadBatchSummary(BaseModel):
+    reports: List[UploadSummary]
+    message: str = "Reports processed and stored successfully."
+
+
 class DrugReportListItem(BaseModel):
     """Lightweight summary for the list endpoint."""
 

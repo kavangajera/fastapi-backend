@@ -1,0 +1,32 @@
+2026-05-28 22:58:59 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:59:00 | INFO     | Detected barcode: 0368382095053
+2026-05-28 22:59:00 | INFO     | Normalized package NDC: 68382-095-05
+2026-05-28 22:59:00 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226838-2095-05%22
+2026-05-28 22:59:01 | INFO     | FDA response status: 404
+2026-05-28 22:59:01 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:59:01 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2268382-095-05%22
+2026-05-28 22:59:03 | INFO     | FDA response status: 200
+2026-05-28 22:59:03 | INFO     | Processing complete.
+2026-05-28 22:59:03 | INFO     | DataMatrix scan: 20260331_181104209_iOS.heic gtin=00368382095053 serial=30200524124720172704 exp=2027-04-30 lot=03683820950532130200
+2026-05-28 22:59:03 | INFO     | OK BARCODE_OK: 20260331_181104209_iOS.heic ndc10=68382-095-01 -> ndc11=68382009501
+2026-05-28 22:59:07 | INFO     | MATCH_FAIL: 20260331_181104209_iOS.heic ndc11=68382009501 no invoice match
+2026-05-28 23:17:24 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 23:17:25 | INFO     | Detected barcode: 0375907005305
+2026-05-28 23:17:25 | INFO     | Normalized package NDC: 75907-005-30
+2026-05-28 23:17:25 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%227590-7005-30%22
+2026-05-28 23:17:26 | INFO     | FDA response status: 404
+2026-05-28 23:17:26 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 23:17:26 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2275907-005-30%22
+2026-05-28 23:17:28 | INFO     | FDA response status: 200
+2026-05-28 23:17:28 | INFO     | Processing complete.
+2026-05-28 23:17:32 | INFO     | DataMatrix scan: 20260331_181340184_iOS.heic -> No DataMatrix barcode detected in the image.

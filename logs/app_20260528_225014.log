@@ -1,0 +1,21 @@
+2026-05-28 22:50:18 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:50:18 | WARNING  | No barcode detected.
+2026-05-28 22:50:18 | INFO     | Normalized package NDC: None
+2026-05-28 22:50:18 | INFO     | Processing complete.
+2026-05-28 22:50:19 | INFO     | DataMatrix scan: 20260331_181058755_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:50:19 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:50:19 | INFO     | Detected barcode: 0368382095053
+2026-05-28 22:50:19 | INFO     | Normalized package NDC: 68382-095-05
+2026-05-28 22:50:19 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226838-2095-05%22
+2026-05-28 22:50:23 | INFO     | FDA response status: 404
+2026-05-28 22:50:23 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:50:23 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2268382-095-05%22
+2026-05-28 22:50:24 | INFO     | FDA response status: 200
+2026-05-28 22:50:24 | INFO     | Processing complete.
+2026-05-28 22:50:25 | INFO     | DataMatrix scan: 20260331_181104209_iOS.heic gtin=00368382095053 serial=30200524124720172704 exp=2027-04-30 lot=03683820950532130200
+2026-05-28 22:50:25 | INFO     | OK BARCODE_OK: 20260331_181104209_iOS.heic ndc10=68382-095-01 -> ndc11=68382009501

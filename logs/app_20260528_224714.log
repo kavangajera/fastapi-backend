@@ -1,0 +1,100 @@
+2026-05-28 22:47:18 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:19 | WARNING  | No barcode detected.
+2026-05-28 22:47:19 | INFO     | Normalized package NDC: None
+2026-05-28 22:47:19 | INFO     | Processing complete.
+2026-05-28 22:47:19 | INFO     | DataMatrix scan: 20260331_181058755_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:19 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:19 | INFO     | Detected barcode: 0368382095053
+2026-05-28 22:47:19 | INFO     | Normalized package NDC: 68382-095-05
+2026-05-28 22:47:19 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226838-2095-05%22
+2026-05-28 22:47:21 | INFO     | FDA response status: 404
+2026-05-28 22:47:21 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:47:21 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2268382-095-05%22
+2026-05-28 22:47:22 | INFO     | FDA response status: 200
+2026-05-28 22:47:22 | INFO     | Processing complete.
+2026-05-28 22:47:22 | INFO     | DataMatrix scan: 20260331_181104209_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:22 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:22 | WARNING  | No barcode detected.
+2026-05-28 22:47:22 | INFO     | Normalized package NDC: None
+2026-05-28 22:47:22 | INFO     | Processing complete.
+2026-05-28 22:47:22 | INFO     | DataMatrix scan: 20260331_181335367_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:22 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:23 | INFO     | Detected barcode: 0375907005305
+2026-05-28 22:47:23 | INFO     | Normalized package NDC: 75907-005-30
+2026-05-28 22:47:23 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%227590-7005-30%22
+2026-05-28 22:47:24 | INFO     | FDA response status: 404
+2026-05-28 22:47:24 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:47:24 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2275907-005-30%22
+2026-05-28 22:47:26 | INFO     | FDA response status: 200
+2026-05-28 22:47:26 | INFO     | Processing complete.
+2026-05-28 22:47:26 | INFO     | DataMatrix scan: 20260331_181340184_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:26 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:26 | WARNING  | No barcode detected.
+2026-05-28 22:47:26 | INFO     | Normalized package NDC: None
+2026-05-28 22:47:26 | INFO     | Processing complete.
+2026-05-28 22:47:26 | INFO     | DataMatrix scan: 20260331_181350325_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:27 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:27 | INFO     | Detected barcode: 0329300155013
+2026-05-28 22:47:27 | INFO     | Normalized package NDC: 29300-155-01
+2026-05-28 22:47:27 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%222930-0155-01%22
+2026-05-28 22:47:28 | INFO     | FDA response status: 404
+2026-05-28 22:47:28 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:47:28 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2229300-155-01%22
+2026-05-28 22:47:30 | INFO     | FDA response status: 200
+2026-05-28 22:47:30 | INFO     | Processing complete.
+2026-05-28 22:47:30 | INFO     | DataMatrix scan: 20260331_181356625_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:30 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:30 | WARNING  | No barcode detected.
+2026-05-28 22:47:30 | INFO     | Normalized package NDC: None
+2026-05-28 22:47:30 | INFO     | Processing complete.
+2026-05-28 22:47:30 | INFO     | DataMatrix scan: 20260331_181402723_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:30 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:31 | WARNING  | No barcode detected.
+2026-05-28 22:47:31 | INFO     | Normalized package NDC: None
+2026-05-28 22:47:31 | INFO     | Processing complete.
+2026-05-28 22:47:31 | INFO     | DataMatrix scan: 20260331_181411172_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:31 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:31 | INFO     | Detected barcode: 0365862779908
+2026-05-28 22:47:31 | INFO     | Normalized package NDC: 65862-779-90
+2026-05-28 22:47:31 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226586-2779-90%22
+2026-05-28 22:47:33 | INFO     | FDA response status: 404
+2026-05-28 22:47:33 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:47:33 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2265862-779-90%22
+2026-05-28 22:47:34 | INFO     | FDA response status: 200
+2026-05-28 22:47:34 | INFO     | Processing complete.
+2026-05-28 22:47:34 | INFO     | DataMatrix scan: 20260331_181428482_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'
+2026-05-28 22:47:35 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:47:35 | INFO     | Detected barcode: 0365862779908
+2026-05-28 22:47:35 | INFO     | Normalized package NDC: 65862-779-90
+2026-05-28 22:47:35 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226586-2779-90%22
+2026-05-28 22:47:36 | INFO     | FDA response status: 404
+2026-05-28 22:47:36 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:47:36 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2265862-779-90%22
+2026-05-28 22:47:38 | INFO     | FDA response status: 200
+2026-05-28 22:47:38 | INFO     | Processing complete.
+2026-05-28 22:47:38 | INFO     | DataMatrix scan: 20260331_181433288_iOS.heic -> Could not decode image bytes: 'numpy.ndarray' object has no attribute 'read'

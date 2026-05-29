@@ -1,0 +1,102 @@
+2026-05-28 22:50:51 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:50:52 | WARNING  | No barcode detected.
+2026-05-28 22:50:52 | INFO     | Normalized package NDC: None
+2026-05-28 22:50:52 | INFO     | Processing complete.
+2026-05-28 22:50:53 | INFO     | DataMatrix scan: 20260331_181058755_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:50:53 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:50:53 | INFO     | Detected barcode: 0368382095053
+2026-05-28 22:50:53 | INFO     | Normalized package NDC: 68382-095-05
+2026-05-28 22:50:53 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226838-2095-05%22
+2026-05-28 22:50:55 | INFO     | FDA response status: 404
+2026-05-28 22:50:55 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:50:55 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2268382-095-05%22
+2026-05-28 22:50:56 | INFO     | FDA response status: 200
+2026-05-28 22:50:56 | INFO     | Processing complete.
+2026-05-28 22:50:56 | INFO     | DataMatrix scan: 20260331_181104209_iOS.heic gtin=00368382095053 serial=30200524124720172704 exp=2027-04-30 lot=03683820950532130200
+2026-05-28 22:50:56 | INFO     | OK BARCODE_OK: 20260331_181104209_iOS.heic ndc10=68382-095-01 -> ndc11=68382009501
+2026-05-28 22:51:01 | INFO     | MATCH_FAIL: 20260331_181104209_iOS.heic ndc11=68382009501 no invoice match
+2026-05-28 22:51:01 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:01 | WARNING  | No barcode detected.
+2026-05-28 22:51:01 | INFO     | Normalized package NDC: None
+2026-05-28 22:51:01 | INFO     | Processing complete.
+2026-05-28 22:51:03 | INFO     | DataMatrix scan: 20260331_181335367_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:03 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:03 | INFO     | Detected barcode: 0375907005305
+2026-05-28 22:51:03 | INFO     | Normalized package NDC: 75907-005-30
+2026-05-28 22:51:03 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%227590-7005-30%22
+2026-05-28 22:51:05 | INFO     | FDA response status: 404
+2026-05-28 22:51:05 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:51:05 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2275907-005-30%22
+2026-05-28 22:51:07 | INFO     | FDA response status: 200
+2026-05-28 22:51:07 | INFO     | Processing complete.
+2026-05-28 22:51:07 | INFO     | DataMatrix scan: 20260331_181340184_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:08 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:08 | WARNING  | No barcode detected.
+2026-05-28 22:51:08 | INFO     | Normalized package NDC: None
+2026-05-28 22:51:08 | INFO     | Processing complete.
+2026-05-28 22:51:09 | INFO     | DataMatrix scan: 20260331_181350325_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:09 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:09 | INFO     | Detected barcode: 0329300155013
+2026-05-28 22:51:09 | INFO     | Normalized package NDC: 29300-155-01
+2026-05-28 22:51:09 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%222930-0155-01%22
+2026-05-28 22:51:11 | INFO     | FDA response status: 404
+2026-05-28 22:51:11 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:51:11 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2229300-155-01%22
+2026-05-28 22:51:13 | INFO     | FDA response status: 200
+2026-05-28 22:51:13 | INFO     | Processing complete.
+2026-05-28 22:51:14 | INFO     | DataMatrix scan: 20260331_181356625_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:14 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:14 | WARNING  | No barcode detected.
+2026-05-28 22:51:14 | INFO     | Normalized package NDC: None
+2026-05-28 22:51:14 | INFO     | Processing complete.
+2026-05-28 22:51:15 | INFO     | DataMatrix scan: 20260331_181402723_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:15 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:15 | WARNING  | No barcode detected.
+2026-05-28 22:51:15 | INFO     | Normalized package NDC: None
+2026-05-28 22:51:15 | INFO     | Processing complete.
+2026-05-28 22:51:16 | INFO     | DataMatrix scan: 20260331_181411172_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:16 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:17 | INFO     | Detected barcode: 0365862779908
+2026-05-28 22:51:17 | INFO     | Normalized package NDC: 65862-779-90
+2026-05-28 22:51:17 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226586-2779-90%22
+2026-05-28 22:51:18 | INFO     | FDA response status: 404
+2026-05-28 22:51:18 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:51:18 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2265862-779-90%22
+2026-05-28 22:51:20 | INFO     | FDA response status: 200
+2026-05-28 22:51:20 | INFO     | Processing complete.
+2026-05-28 22:51:21 | INFO     | DataMatrix scan: 20260331_181428482_iOS.heic -> No DataMatrix barcode detected in the image.
+2026-05-28 22:51:21 | INFO     | Scanning barcode using pyzbar...
+2026-05-28 22:51:22 | INFO     | Detected barcode: 0365862779908
+2026-05-28 22:51:22 | INFO     | Normalized package NDC: 65862-779-90
+2026-05-28 22:51:22 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%226586-2779-90%22
+2026-05-28 22:51:23 | INFO     | FDA response status: 404
+2026-05-28 22:51:23 | WARNING  | FDA API error: {
+  "error": {
+    "code": "NOT_FOUND",
+    "message": "No matches found!"
+  }
+}
+2026-05-28 22:51:23 | INFO     | FDA query URL: https://api.fda.gov/drug/ndc.json?search=packaging.package_ndc%3A%2265862-779-90%22
+2026-05-28 22:51:24 | INFO     | FDA response status: 200
+2026-05-28 22:51:24 | INFO     | Processing complete.
+2026-05-28 22:51:25 | INFO     | DataMatrix scan: 20260331_181433288_iOS.heic -> No DataMatrix barcode detected in the image.
