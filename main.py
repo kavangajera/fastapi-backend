@@ -10,6 +10,7 @@ from routes import router
 from routes.pharmacy_purchase_report import router as report_router
 from routes.barcode import router as barcode_router
 from routes.invoice import router as invoice_router
+from routes.manual_entry import router as manual_entry_router
 from middlewares import auth
 
 setup_logging()
@@ -53,6 +54,10 @@ Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-acces
         {
             "name": "Admin",
             "description": "Endpoints restricted to users with the ADMIN role for platform-wide management.",
+        },
+        {
+            "name": "Manual Data Entry",
+            "description": "Endpoints for manually entering invoice and dispense data via JSON instead of document upload.",
         },
     ],
 )
@@ -181,6 +186,7 @@ app.include_router(router)
 app.include_router(report_router)
 app.include_router(barcode_router)
 app.include_router(invoice_router)
+app.include_router(manual_entry_router)
 @app.get("/")
 async def welcome():
     return {"message": "Welcome to Queue RX!"}
