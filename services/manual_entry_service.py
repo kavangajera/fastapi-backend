@@ -80,6 +80,16 @@ def store_manual_invoice(
     db.flush()
 
     for item in payload.line_items:
+        # Auto-compute: no ndc11 + 4-digit UPC → verification not required
+        upc_digits = (item.upc or "").strip()
+        has_ndc11 = bool(item.ndc11 and item.ndc11.strip())
+        is_short_upc = upc_digits.isdigit() and len(upc_digits) <= 4
+
+        if not has_ndc11 and is_short_upc:
+            verification_required = False
+        else:
+            verification_required = item.verification_required
+
         db_item = InvoiceLineItem(
             invoice_id=db_invoice.id,
             line=item.line,
@@ -99,7 +109,14 @@ def store_manual_invoice(
             extended_price=item.extended_price,
             awp=item.awp,
             note_code=item.note_code,
-            verification_required=True,
+            verification_required=verification_required,
+            verified=item.verified,
+            fda_package_ndc=item.fda_package_ndc,
+            fda_ndc11=item.fda_ndc11,
+            dm_gtin=item.dm_gtin,
+            dm_serial_number=item.dm_serial_number,
+            dm_expiration_date=item.dm_expiration_date,
+            dm_lot_number=item.dm_lot_number,
         )
         db.add(db_item)
 

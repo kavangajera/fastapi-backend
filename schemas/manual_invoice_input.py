@@ -53,6 +53,18 @@ class ManualInvoiceLineItemInput(BaseModel):
     awp: Optional[str] = None
     note_code: Optional[str] = None
 
+    # ── verification / FDA fields ────────────────────────────────────────
+    verification_required: bool = Field(True, description="Whether barcode verification is required")
+    verified: bool = Field(False, description="Whether the item has been verified")
+    fda_package_ndc: Optional[str] = None
+    fda_ndc11: Optional[str] = None
+
+    # ── DataMatrix barcode fields ────────────────────────────────────────
+    dm_gtin: Optional[str] = None
+    dm_serial_number: Optional[str] = None
+    dm_expiration_date: Optional[str] = None
+    dm_lot_number: Optional[str] = None
+
 
 # ---------------------------------------------------------------------------
 # Summary input (optional block)
