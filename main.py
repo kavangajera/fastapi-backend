@@ -1,9 +1,12 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, APIRouter
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi import HTTPException
 from fastapi.openapi.docs import get_swagger_ui_html
 from fastapi.middleware.cors import CORSMiddleware
+from loguru import logger
 from core.config import settings
 from core.logging import setup_logging
 from routes import router
@@ -11,9 +14,32 @@ from routes.pharmacy_purchase_report import router as report_router
 from routes.barcode import router as barcode_router
 from routes.invoice import router as invoice_router
 from routes.manual_entry import router as manual_entry_router
+from routes.documents import router as documents_router
+from routes.monitor import router as monitor_router
+from kafka_infra.producer import kafka_producer
 from middlewares import auth
 
 setup_logging()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage Kafka producer lifecycle."""
+    try:
+        await kafka_producer.start()
+    except Exception as exc:
+        logger.warning(
+            "Kafka producer unavailable at startup: {error}. "
+            "Document processing will not work until Kafka is reachable.",
+            error=exc,
+        )
+    yield
+    try:
+        await kafka_producer.stop()
+    except Exception:
+        pass
+
+
 app = FastAPI(
     title="Queue RX API",
     version="1.0.0",
@@ -59,7 +85,12 @@ Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-acces
             "name": "Manual Data Entry",
             "description": "Endpoints for manually entering invoice and dispense data via JSON instead of document upload.",
         },
+        {
+            "name": "Document Processing",
+            "description": "Endpoints for uploading documents and tracking async processing status via Kafka.",
+        },
     ],
+    lifespan=lifespan,
 )
 
 
@@ -187,6 +218,20 @@ app.include_router(report_router)
 app.include_router(barcode_router)
 app.include_router(invoice_router)
 app.include_router(manual_entry_router)
+app.include_router(documents_router)
+app.include_router(monitor_router)
+
+@app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
+async def dashboard_view():
+    import os
+    file_path = os.path.join(os.path.dirname(__file__), "public", "dashboard.html")
+    try:
+        with open(file_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return HTMLResponse(content=html_content, status_code=200)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Dashboard UI not found")
+
 @app.get("/")
 async def welcome():
     return {"message": "Welcome to Queue RX!"}

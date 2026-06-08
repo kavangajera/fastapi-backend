@@ -12,3 +12,5 @@ uv.lock
 .aider*
 *.pdf
 *.heic
+storage/
+logs/

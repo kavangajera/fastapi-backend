@@ -21,6 +21,17 @@ class Settings(BaseSettings):
     DATAMATRIX_DEBUG: bool = False
     DATAMATRIX_DEBUG_DIR: str = "logs/datamatrix_debug"
 
+    # ── Kafka settings ──────────────────────────────────────────────
+    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
+    KAFKA_DOCUMENT_TOPIC: str = "pdf-processing"
+    KAFKA_CONSUMER_GROUP: str = "pdf-workers"
+    KAFKA_DLQ_TOPIC: str = "pdf-processing-dlq"
+
+    # ── Document processing settings ────────────────────────────────
+    DOCUMENT_STORAGE_DIR: str = "storage/documents"
+    DOCUMENT_MAX_FILE_SIZE_MB: int = 50
+    DOCUMENT_MAX_RETRIES: int = 3
+
     model_config = ConfigDict(extra="forbid", env_file=".env")
 
 settings = Settings()

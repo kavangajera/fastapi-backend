@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue RX | Pipeline Monitor</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        dark: {
+                            bg: '#0f172a',      // slate-900
+                            surface: '#1e293b', // slate-800
+                            border: '#334155',  // slate-700
+                        },
+                        brand: {
+                            accent: '#3b82f6',  // blue-500
+                            glow: 'rgba(59, 130, 246, 0.5)',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: theme('colors.dark.bg');
+            color: #e2e8f0; /* slate-200 */
+        }
+        .glass-panel {
+            background-color: theme('colors.dark.surface');
+            border: 1px solid theme('colors.dark.border');
+            border-radius: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            backdrop-filter: blur(10px);
+        }
+        .stat-card {
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
+            border-color: theme('colors.brand.accent');
+        }
+        .status-pulse {
+            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: .5; transform: scale(1.1); }
+        }
+        
+        /* Custom scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: theme('colors.dark.bg');
+        }
+        ::-webkit-scrollbar-thumb {
+            background: theme('colors.dark.border');
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #475569; /* slate-600 */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col antialiased">
+
+    <!-- Header -->
+    <header class="glass-panel mx-4 mt-4 px-6 py-4 flex items-center justify-between sticky top-4 z-50">
+        <div class="flex items-center space-x-3">
+            <div class="p-2 bg-brand-accent/20 rounded-lg border border-brand-accent/30">
+                <i data-lucide="activity" class="w-6 h-6 text-brand-accent"></i>
+            </div>
+            <div>
+                <h1 class="text-xl font-bold tracking-tight text-white">Queue RX Pipeline</h1>
+                <p class="text-xs text-slate-400 font-medium">Distributed Document Processing</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-6">
+            <div class="flex items-center space-x-2">
+                <span class="relative flex h-3 w-3">
+                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </span>
+                <span class="text-sm font-medium text-slate-300">Live Heartbeat</span>
+            </div>
+            <div class="text-right">
+                <div class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Last Updated</div>
+                <div id="last-updated" class="text-sm font-mono text-slate-200">--:--:--</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <main class="flex-1 p-4 space-y-6">
+
+        <!-- Architecture Health -->
+        <section>
+            <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 px-1 flex items-center">
+                <i data-lucide="server" class="w-4 h-4 mr-2"></i> Architecture Status
+            </h2>
+            <div id="services-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- Service Cards Injected Here -->
+            </div>
+        </section>
+
+        <!-- KPI Metrics -->
+        <section>
+            <div id="kpi-grid" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                <!-- KPI Cards Injected Here -->
+            </div>
+        </section>
+
+        <!-- Charts & Activity -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <!-- Timeline Chart -->
+            <div class="lg:col-span-2 glass-panel p-5 flex flex-col">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-base font-semibold text-white flex items-center">
+                        <i data-lucide="bar-chart-2" class="w-5 h-5 mr-2 text-indigo-400"></i>
+                        Throughput (24h)
+                    </h2>
+                </div>
+                <div class="flex-1 relative w-full h-[300px]">
+                    <canvas id="throughputChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Pipeline Config -->
+            <div class="glass-panel p-5 flex flex-col">
+                <h2 class="text-base font-semibold text-white flex items-center mb-4">
+                    <i data-lucide="settings" class="w-5 h-5 mr-2 text-slate-400"></i>
+                    Pipeline Config
+                </h2>
+                <div class="flex-1 overflow-y-auto">
+                    <ul id="config-list" class="space-y-3">
+                        <!-- Config items injected here -->
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Documents Table -->
+        <section class="glass-panel p-0 overflow-hidden">
+            <div class="px-5 py-4 border-b border-dark-border flex justify-between items-center bg-dark-surface/50">
+                <h2 class="text-base font-semibold text-white flex items-center">
+                    <i data-lucide="file-text" class="w-5 h-5 mr-2 text-blue-400"></i>
+                    Current Processing & Recent Documents
+                </h2>
+                <span id="total-docs-badge" class="px-2.5 py-1 text-xs font-medium bg-slate-800 text-slate-300 rounded-full border border-slate-700">
+                    Total: --
+                </span>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs text-slate-400 uppercase bg-slate-800/50">
+                        <tr>
+                            <th class="px-5 py-3 font-semibold">Document Key</th>
+                            <th class="px-5 py-3 font-semibold">File</th>
+                            <th class="px-5 py-3 font-semibold">Status</th>
+                            <th class="px-5 py-3 font-semibold">Type</th>
+                            <th class="px-5 py-3 font-semibold text-right">Updated</th>
+                        </tr>
+                    </thead>
+                    <tbody id="docs-table-body" class="divide-y divide-dark-border">
+                        <!-- Rows injected here -->
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="p-4 text-center text-xs text-slate-500">
+        Queue RX Document Processing Architecture &copy; 2026
+    </footer>
+
+    <!-- Application Logic -->
+    <script>
+        // Initialize Icons
+        lucide.createIcons();
+
+        // Chart Instance
+        let throughputChart;
+
+        // Fetch utilities
+        async function fetchAPI(endpoint) {
+            try {
+                const res = await fetch(`/api/monitor/${endpoint}`);
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                return await res.json();
+            } catch (e) {
+                console.error(`Failed fetching ${endpoint}:`, e);
+                return null;
+            }
+        }
+
+        // Formatters
+        const formatTime = (isoString) => {
+            if (!isoString) return '--';
+            const d = new Date(isoString);
+            return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second:'2-digit' });
+        };
+
+        const formatBytes = (bytes) => {
+            if (bytes === 0 || !bytes) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        };
+
+        const getStatusColor = (status) => {
+            const s = (status || '').toUpperCase();
+            if (s === 'COMPLETED') return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
+            if (s === 'PROCESSING') return 'text-blue-400 bg-blue-400/10 border-blue-400/20 animate-pulse';
+            if (s === 'QUEUED') return 'text-amber-400 bg-amber-400/10 border-amber-400/20';
+            if (s === 'FAILED' || s === 'FAILED_PERMANENTLY') return 'text-rose-400 bg-rose-400/10 border-rose-400/20';
+            if (s === 'RETRYING') return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
+            return 'text-slate-400 bg-slate-400/10 border-slate-400/20';
+        };
+
+        // Render Functions
+        function renderServices(services) {
+            const grid = document.getElementById('services-grid');
+            if (!services) return;
+            
+            grid.innerHTML = services.map(srv => {
+                const isHealthy = srv.status === 'healthy' || srv.status === 'idle';
+                const color = isHealthy ? 'text-emerald-400' : (srv.status === 'warning' ? 'text-amber-400' : 'text-rose-400');
+                const dotColor = isHealthy ? 'bg-emerald-500' : (srv.status === 'warning' ? 'bg-amber-500' : 'bg-rose-500');
+                
+                return `
+                    <div class="glass-panel stat-card p-4 flex items-center justify-between">
+                        <div class="flex items-center space-x-4">
+                            <div class="p-2.5 bg-slate-800 rounded-lg border border-slate-700 text-slate-300">
+                                <i data-lucide="${srv.icon}" class="w-5 h-5"></i>
+                            </div>
+                            <div>
+                                <h3 class="text-sm font-semibold text-white">${srv.name}</h3>
+                                <p class="text-xs text-slate-400 mt-0.5">${srv.details}</p>
+                            </div>
+                        </div>
+                        <div class="flex flex-col items-end">
+                            <span class="flex items-center text-xs font-medium uppercase tracking-wider ${color}">
+                                <span class="w-2 h-2 rounded-full ${dotColor} mr-1.5 ${isHealthy ? 'status-pulse' : ''}"></span>
+                                ${srv.status}
+                            </span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        function renderKPIs(overview) {
+            const grid = document.getElementById('kpi-grid');
+            if (!overview) return;
+
+            const kpis = [
+                { label: 'Queued', value: overview.queued, icon: 'list', color: 'text-amber-400' },
+                { label: 'Processing', value: overview.processing, icon: 'loader', color: 'text-blue-400' },
+                { label: 'Completed', value: overview.completed, icon: 'check-circle-2', color: 'text-emerald-400' },
+                { label: 'Failed', value: overview.failed, icon: 'alert-circle', color: 'text-rose-400' },
+                { label: 'Success Rate', value: overview.success_rate + '%', icon: 'activity', color: 'text-indigo-400' },
+            ];
+
+            grid.innerHTML = kpis.map(kpi => `
+                <div class="glass-panel stat-card p-4 relative overflow-hidden">
+                    <div class="absolute top-0 right-0 p-4 opacity-10">
+                        <i data-lucide="${kpi.icon}" class="w-12 h-12 ${kpi.color}"></i>
+                    </div>
+                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">${kpi.label}</p>
+                    <h3 class="text-2xl font-bold text-white">${kpi.value}</h3>
+                </div>
+            `).join('');
+            lucide.createIcons();
+            
+            document.getElementById('total-docs-badge').textContent = `Total: ${overview.total_documents}`;
+        }
+
+        function renderConfig(config) {
+            const list = document.getElementById('config-list');
+            if (!config) return;
+            
+            const items = Object.entries(config).map(([key, value]) => {
+                const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                return `
+                    <li class="flex items-start">
+                        <div class="w-2 h-2 rounded-full bg-slate-600 mt-1.5 mr-3 flex-shrink-0"></div>
+                        <div>
+                            <p class="text-xs font-medium text-slate-400">${label}</p>
+                            <p class="text-sm text-slate-200 font-mono break-all">${value}</p>
+                        </div>
+                    </li>
+                `;
+            }).join('');
+            list.innerHTML = items;
+        }
+
+        function renderRecentDocs(docs) {
+            const tbody = document.getElementById('docs-table-body');
+            if (!docs) return;
+
+            if (docs.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-8 text-center text-slate-500">No documents found.</td></tr>`;
+                return;
+            }
+
+            tbody.innerHTML = docs.map(doc => {
+                const statusClass = getStatusColor(doc.status);
+                return `
+                    <tr class="hover:bg-slate-800/30 transition-colors">
+                        <td class="px-5 py-3 font-mono text-xs text-slate-300 align-middle">
+                            ${doc.doc_key.substring(0,8)}...
+                        </td>
+                        <td class="px-5 py-3 align-middle">
+                            <div class="text-sm font-medium text-slate-200">${doc.original_filename || 'Unknown'}</div>
+                            <div class="text-xs text-slate-500">${formatBytes(doc.file_size)}</div>
+                            ${doc.error_message ? `<div class="text-xs text-rose-400 mt-0.5 truncate max-w-xs" title="${doc.error_message}">${doc.error_message}</div>` : ''}
+                        </td>
+                        <td class="px-5 py-3 align-middle">
+                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${statusClass}">
+                                ${doc.status}
+                                ${doc.retry_count > 0 ? `<span class="ml-1 opacity-70">(R${doc.retry_count})</span>` : ''}
+                            </span>
+                        </td>
+                        <td class="px-5 py-3 align-middle text-sm text-slate-300 uppercase">
+                            ${doc.document_type}
+                        </td>
+                        <td class="px-5 py-3 align-middle text-right text-xs text-slate-400 font-mono">
+                            ${formatTime(doc.updated_at || doc.created_at)}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        function initChart() {
+            const ctx = document.getElementById('throughputChart').getContext('2d');
+            
+            // Global defaults for dark theme
+            Chart.defaults.color = '#94a3b8';
+            Chart.defaults.borderColor = '#334155';
+            
+            throughputChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'Completed',
+                            data: [],
+                            borderColor: '#34d399', // emerald-400
+                            backgroundColor: 'rgba(52, 211, 153, 0.1)',
+                            borderWidth: 2,
+                            tension: 0.4,
+                            fill: true,
+                            pointRadius: 0,
+                            pointHoverRadius: 4
+                        },
+                        {
+                            label: 'Queued',
+                            data: [],
+                            borderColor: '#fbbf24', // amber-400
+                            borderWidth: 2,
+                            borderDash: [5, 5],
+                            tension: 0.4,
+                            pointRadius: 0
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    plugins: {
+                        legend: {
+                            position: 'top',
+                            align: 'end',
+                            labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' }
+                        },
+                        tooltip: {
+                            backgroundColor: '#1e293b',
+                            titleColor: '#f8fafc',
+                            bodyColor: '#cbd5e1',
+                            borderColor: '#334155',
+                            borderWidth: 1,
+                            padding: 10
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            grid: { color: '#334155', drawBorder: false },
+                            ticks: { precision: 0 }
+                        },
+                        x: {
+                            grid: { display: false, drawBorder: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        function updateChart(timeline) {
+            if (!throughputChart || !timeline) return;
+            
+            throughputChart.data.labels = timeline.map(t => t.hour);
+            throughputChart.data.datasets[0].data = timeline.map(t => t.completed);
+            throughputChart.data.datasets[1].data = timeline.map(t => t.queued);
+            throughputChart.update('none'); // Update without full animation for smoother polling
+        }
+
+        // Main Loop
+        async function updateDashboard() {
+            const [overview, services, config, recent, timeline] = await Promise.all([
+                fetchAPI('overview'),
+                fetchAPI('services'),
+                fetchAPI('config'),
+                fetchAPI('documents/recent?limit=10'),
+                fetchAPI('documents/timeline?hours=12')
+            ]);
+
+            renderServices(services);
+            renderKPIs(overview);
+            renderConfig(config);
+            renderRecentDocs(recent);
+            updateChart(timeline);
+
+            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+        }
+
+        // Boot
+        document.addEventListener('DOMContentLoaded', () => {
+            initChart();
+            updateDashboard();
+            
+            // Heartbeat every 3 seconds
+            setInterval(updateDashboard, 3000);
+        });
+    </script>
+</body>
+</html>

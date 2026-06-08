@@ -4,3 +4,4 @@ from .pharmacy import Pharmacy
 from .pharmacy_purchase_report import DrugReport, Medicine, Dispense
 from .invoice import Invoice, InvoiceLineItem, InvoiceSummary
 from .reconciliation import DispenseReconciliation
+from .document import Document
