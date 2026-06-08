@@ -28,3 +28,13 @@ def setup_logging() -> None:
         diagnose=False,
         enqueue=True,
     )
+
+    # In-memory ring buffer for the dashboard log stream (no DB tracking)
+    from core.log_buffer import log_buffer
+    logger.add(
+        log_buffer.sink,
+        level="DEBUG",
+        format="{message}",
+        backtrace=False,
+        diagnose=False,
+    )

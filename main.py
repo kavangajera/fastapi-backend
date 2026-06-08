@@ -17,6 +17,8 @@ from routes.manual_entry import router as manual_entry_router
 from routes.documents import router as documents_router
 from routes.monitor import router as monitor_router
 from kafka_infra.producer import kafka_producer
+from kafka_infra.result_bus import result_bus
+from kafka_infra import topics
 from middlewares import auth
 
 setup_logging()
@@ -24,16 +26,25 @@ setup_logging()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Manage Kafka producer lifecycle."""
+    """Manage Kafka producer + result-bus lifecycle for the async-await UX."""
+    try:
+        await topics.ensure_topics()
+    except Exception as exc:
+        logger.warning("Kafka topic ensure failed at startup: {error}", error=exc)
     try:
         await kafka_producer.start()
+        await result_bus.start()
     except Exception as exc:
         logger.warning(
-            "Kafka producer unavailable at startup: {error}. "
+            "Kafka unavailable at startup: {error}. "
             "Document processing will not work until Kafka is reachable.",
             error=exc,
         )
     yield
+    try:
+        await result_bus.stop()
+    except Exception:
+        pass
     try:
         await kafka_producer.stop()
     except Exception:

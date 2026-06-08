@@ -1,31 +1,37 @@
 """
 routes/documents.py
 ───────────────────
-FastAPI router for document upload and status tracking.
+Unified async document processing endpoint.
 
-This is the API + Producer layer:
-    1. Accept document upload
+Flow (async-await UX — the caller waits for the result):
+    1. Validate file against the requested process_type
     2. Store file to local storage
     3. Create DB record (QUEUED)
-    4. Publish job to Kafka
-    5. Return immediately
+    4. Register an in-memory Future for this doc_key (result bus)
+    5. Publish a job to the <process_type>-processing topic
+    6. Await the worker's result (push, not poll) up to a timeout
+       → return the processed data inline
+    7. On timeout, return 202 + doc_key (poll GET /documents/{doc_key})
 
-Processing happens in the kafka_worker process, NOT here.
+Processing itself happens in the per-type kafka_worker processes.
 """
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from core.config import settings
-from core.enums import DocumentStatus, DocumentType
+from core.enums import ALLOWED_EXTENSIONS, DocumentStatus, ProcessType
 from database import get_db
+from kafka_infra.messages import ProcessingJob
 from kafka_infra.producer import kafka_producer
+from kafka_infra.result_bus import result_bus
 from models.document import Document
 from schemas.document_schemas import (
     DocumentListResponse,
@@ -36,65 +42,59 @@ from services.document_storage import document_storage
 
 router = APIRouter(prefix="/documents", tags=["Document Processing"])
 
-# Allowed extensions → DocumentType mapping
-_EXTENSION_MAP: dict[str, DocumentType] = {
-    "pdf": DocumentType.PDF,
-    "png": DocumentType.IMAGE,
-    "jpg": DocumentType.IMAGE,
-    "jpeg": DocumentType.IMAGE,
-    "csv": DocumentType.CSV,
-}
-
 
 def _get_extension(filename: str) -> str:
-    """Extract lowercase extension from filename."""
     if "." not in filename:
         return ""
     return filename.rsplit(".", 1)[-1].lower()
 
 
-# ── POST /documents/ ────────────────────────────────────────────────────────
+# ── POST /documents/process ──────────────────────────────────────────────────
 
 
 @router.post(
-    "/",
+    "/process",
     response_model=DocumentUploadResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-    summary="Upload a document for async processing",
+    summary="Upload a document and await its processed result",
     description=(
-        "Upload a document (PDF, image, or CSV). The file is stored locally, "
-        "a processing job is published to Kafka, and the API returns immediately "
-        "with a `doc_key` for status polling.\n\n"
-        "**Supported formats:** .pdf, .png, .jpg, .jpeg, .csv\n\n"
-        "**Max file size:** Configurable via `DOCUMENT_MAX_FILE_SIZE_MB` "
-        f"(default: {settings.DOCUMENT_MAX_FILE_SIZE_MB} MB)"
+        "Upload a single document together with a `process_type` "
+        "(`dispense`, `invoice`, or `barcode`). The file is stored, a job is "
+        "published to that type's Kafka topic, and the request waits for the "
+        "worker to finish — returning the processed data inline.\n\n"
+        "**Allowed files per type**\n"
+        "- `dispense` → .pdf .docx .doc .xlsx .xls\n"
+        "- `invoice`  → .pdf\n"
+        "- `barcode`  → .png .jpg .jpeg\n\n"
+        "If processing exceeds the server timeout, the response is `202`-style "
+        "(`status=QUEUED`) with a `doc_key` you can poll via `GET /documents/{doc_key}`."
     ),
 )
-async def upload_document(
+async def process_document(
+    process_type: ProcessType = Form(..., description="dispense | invoice | barcode"),
     file: UploadFile = File(..., description="Document file to process"),
     db: Session = Depends(get_db),
 ):
-    # ── Validate file type ──────────────────────────────────────────
+    # ── Validate file type for this process type ────────────────────
     filename = file.filename or "unknown"
     extension = _get_extension(filename)
-    if extension not in _EXTENSION_MAP:
+    allowed = ALLOWED_EXTENSIONS[process_type]
+    if extension not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
-                f"Unsupported file type '.{extension}'. "
-                f"Allowed: {', '.join(f'.{e}' for e in sorted(_EXTENSION_MAP))}"
+                f"Unsupported file '.{extension}' for process_type "
+                f"'{process_type.value}'. Allowed: "
+                f"{', '.join(f'.{e}' for e in sorted(allowed))}"
             ),
         )
-    document_type = _EXTENSION_MAP[extension]
 
-    # ── Read and validate size ──────────────────────────────────────
+    # ── Read + size check ───────────────────────────────────────────
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
         )
-
     max_bytes = settings.DOCUMENT_MAX_FILE_SIZE_MB * 1024 * 1024
     if len(file_bytes) > max_bytes:
         raise HTTPException(
@@ -105,10 +105,9 @@ async def upload_document(
             ),
         )
 
-    # ── Step 1: Generate doc_key ────────────────────────────────────
     doc_key = uuid.uuid4().hex
 
-    # ── Step 2: Store file to disk ──────────────────────────────────
+    # ── Store file ──────────────────────────────────────────────────
     try:
         storage_path = document_storage.store(file_bytes, doc_key, extension)
     except Exception as exc:
@@ -118,10 +117,11 @@ async def upload_document(
             detail="Failed to store document.",
         )
 
-    # ── Step 3: Create DB record (QUEUED) ───────────────────────────
+    # ── Create DB record (QUEUED) ───────────────────────────────────
     db_doc = Document(
         doc_key=doc_key,
-        document_type=document_type.value,
+        document_type=extension,
+        process_type=process_type.value,
         original_filename=filename,
         storage_path=storage_path,
         file_size=len(file_bytes),
@@ -129,12 +129,10 @@ async def upload_document(
         max_retries=settings.DOCUMENT_MAX_RETRIES,
     )
     db.add(db_doc)
-
     try:
         db.commit()
     except Exception as exc:
         db.rollback()
-        # Clean up stored file on DB failure
         document_storage.delete(storage_path)
         logger.exception("Failed to create document record: {error}", error=exc)
         raise HTTPException(
@@ -142,34 +140,69 @@ async def upload_document(
             detail="Failed to create document record.",
         )
 
-    # ── Step 4: Publish job to Kafka ────────────────────────────────
+    # ── Register interest BEFORE publishing (avoid result race) ──────
+    future = result_bus.register(doc_key)
+
+    # ── Publish job ─────────────────────────────────────────────────
     try:
-        await kafka_producer.publish_document_job(
-            doc_key=doc_key,
-            document_type=document_type.value,
+        await kafka_producer.publish_job(
+            ProcessingJob.create(doc_key=doc_key, process_type=process_type.value)
         )
     except Exception as exc:
-        # Kafka publish failed — document is stored and in DB as QUEUED.
-        # Worker can still pick it up via a recovery sweep later.
+        result_bus.unregister(doc_key)
         logger.error(
-            "Kafka publish failed for doc_key={doc_key}: {error}. "
-            "Document is stored and will be retried.",
-            doc_key=doc_key,
-            error=exc,
+            "Kafka publish failed for doc_key={dk}: {err}", dk=doc_key, err=exc
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Processing queue unavailable. Please retry.",
         )
 
-    # ── Step 5: Return immediately ──────────────────────────────────
     logger.info(
-        "Document queued: doc_key={doc_key} type={dtype} file={filename}",
-        doc_key=doc_key,
-        dtype=document_type.value,
-        filename=filename,
+        "Document queued: doc_key={dk} type={type} file={file}",
+        dk=doc_key,
+        type=process_type.value,
+        file=filename,
     )
 
+    # ── Await the worker's result (push-based) ──────────────────────
+    try:
+        result = await asyncio.wait_for(
+            future, timeout=settings.PROCESSING_RESULT_TIMEOUT_SECONDS
+        )
+    except asyncio.TimeoutError:
+        result_bus.unregister(doc_key)
+        return DocumentUploadResponse(
+            doc_key=doc_key,
+            process_type=process_type.value,
+            status=DocumentStatus.QUEUED.value,
+            message=(
+                "Still processing. Poll GET /documents/{doc_key} for the result."
+            ),
+        )
+    except asyncio.CancelledError:
+        result_bus.unregister(doc_key)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Server shutting down; processing will continue in background.",
+        )
+
+    if result.status == DocumentStatus.COMPLETED.value:
+        return DocumentUploadResponse(
+            doc_key=doc_key,
+            process_type=process_type.value,
+            status=result.status,
+            message="Document processed successfully.",
+            data=result.result_data,
+        )
+
+    # Permanent failure (exhausted retries → DLQ)
     return DocumentUploadResponse(
         doc_key=doc_key,
-        status="queued",
-        message="Document accepted for processing.",
+        process_type=process_type.value,
+        status=result.status,
+        message="Document processing failed after all retries.",
+        error=result.error,
     )
 
 
@@ -180,7 +213,6 @@ async def upload_document(
     "/{doc_key}",
     response_model=DocumentStatusResponse,
     summary="Check document processing status",
-    description="Retrieve the current processing status of a document by its `doc_key`.",
 )
 def get_document_status(doc_key: str, db: Session = Depends(get_db)):
     doc = db.query(Document).filter(Document.doc_key == doc_key).first()
@@ -199,7 +231,6 @@ def get_document_status(doc_key: str, db: Session = Depends(get_db)):
     "/",
     response_model=DocumentListResponse,
     summary="List all documents",
-    description="Paginated list of all documents with their processing status.",
 )
 def list_documents(
     skip: int = 0,

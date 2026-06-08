@@ -19,4 +19,27 @@ class DocumentStatus(str, Enum):
 class DocumentType(str, Enum):
     PDF = "pdf"
     IMAGE = "image"
-    CSV = "csv"
+    CSV = "csv"
+
+
+class ProcessType(str, Enum):
+    """
+    The kind of processing a document should undergo.
+
+    Each value maps 1:1 to a dedicated Kafka topic family
+    (``<value>-processing`` / ``<value>-retry`` / ``<value>-dlq``)
+    and to a dedicated worker that calls the matching service.
+    """
+
+    DISPENSE = "dispense"
+    INVOICE = "invoice"
+    BARCODE = "barcode"
+
+
+# Allowed upload file extensions per process type.
+# The unified upload endpoint validates against these.
+ALLOWED_EXTENSIONS: dict[ProcessType, set[str]] = {
+    ProcessType.DISPENSE: {"pdf", "docx", "doc", "xlsx", "xls"},
+    ProcessType.INVOICE: {"pdf"},
+    ProcessType.BARCODE: {"png", "jpg", "jpeg"},
+}

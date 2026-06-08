@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from core.config import settings
 from core.enums import DocumentStatus
 from database import get_db
+from kafka_infra import topics
 from models.document import Document
 
 router = APIRouter(prefix="/api/monitor", tags=["Monitoring"])
@@ -374,10 +375,397 @@ def get_config():
     """Current pipeline configuration (non-sensitive)."""
     return {
         "kafka_bootstrap_servers": settings.KAFKA_BOOTSTRAP_SERVERS,
-        "kafka_topic": settings.KAFKA_DOCUMENT_TOPIC,
-        "kafka_consumer_group": settings.KAFKA_CONSUMER_GROUP,
-        "kafka_dlq_topic": settings.KAFKA_DLQ_TOPIC,
+        "kafka_topics": topics.all_topics(),
+        "kafka_results_topic": topics.results_topic(),
         "storage_dir": settings.DOCUMENT_STORAGE_DIR,
         "max_file_size_mb": settings.DOCUMENT_MAX_FILE_SIZE_MB,
         "max_retries": settings.DOCUMENT_MAX_RETRIES,
     }
+
+
+# ── GET /api/monitor/metrics ───────────────────────────────────────────────
+
+
+@router.get("/metrics", summary="System metrics (no DB tracking)")
+def get_system_metrics():
+    """
+    Real-time system metrics using stdlib only.
+    No database tracking — purely ephemeral.
+    """
+    import os
+    import gc
+    import platform
+    import time
+
+    process_start = getattr(get_system_metrics, "_start_time", None)
+    if process_start is None:
+        get_system_metrics._start_time = time.time()
+        process_start = get_system_metrics._start_time
+
+    uptime_seconds = time.time() - process_start
+
+    # GC stats
+    gc_stats = gc.get_stats()
+    gc_counts = gc.get_count()
+
+    # Memory estimation via resource (platform-dependent)
+    memory_info = {"rss_mb": 0, "available_pct": 0}
+    try:
+        import resource
+        rusage = resource.getrusage(resource.RUSAGE_SELF)
+        memory_info["rss_mb"] = round(rusage.ru_maxrss / 1024, 1)  # Linux KB → MB
+    except (ImportError, Exception):
+        # Windows fallback
+        try:
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            class MEMORYSTATUSEX(ctypes.Structure):
+                _fields_ = [
+                    ("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                ]
+            mem = MEMORYSTATUSEX()
+            mem.dwLength = ctypes.sizeof(MEMORYSTATUSEX)
+            kernel32.GlobalMemoryStatusEx(ctypes.byref(mem))
+            memory_info["rss_mb"] = round((mem.ullTotalPhys - mem.ullAvailPhys) / (1024 ** 2), 1)
+            memory_info["available_pct"] = 100 - mem.dwMemoryLoad
+            memory_info["total_mb"] = round(mem.ullTotalPhys / (1024 ** 2), 1)
+            memory_info["used_pct"] = mem.dwMemoryLoad
+        except Exception:
+            pass
+
+    # CPU count
+    cpu_count = os.cpu_count() or 1
+
+    # Disk usage for storage dir
+    disk_info = {"total_gb": 0, "used_gb": 0, "free_gb": 0, "used_pct": 0}
+    try:
+        import shutil
+        usage = shutil.disk_usage(settings.DOCUMENT_STORAGE_DIR)
+        disk_info = {
+            "total_gb": round(usage.total / (1024 ** 3), 1),
+            "used_gb": round(usage.used / (1024 ** 3), 1),
+            "free_gb": round(usage.free / (1024 ** 3), 1),
+            "used_pct": round((usage.used / usage.total) * 100, 1) if usage.total else 0,
+        }
+    except Exception:
+        pass
+
+    return {
+        "uptime_seconds": round(uptime_seconds, 0),
+        "uptime_formatted": _format_uptime(uptime_seconds),
+        "cpu_count": cpu_count,
+        "memory": memory_info,
+        "disk": disk_info,
+        "python_version": platform.python_version(),
+        "platform": platform.system(),
+        "gc_counts": gc_counts,
+        "gc_stats": gc_stats,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+
+def _format_uptime(seconds: float) -> str:
+    days = int(seconds // 86400)
+    hours = int((seconds % 86400) // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = int(seconds % 60)
+    parts = []
+    if days:
+        parts.append(f"{days}d")
+    if hours:
+        parts.append(f"{hours}h")
+    if minutes:
+        parts.append(f"{minutes}m")
+    parts.append(f"{secs}s")
+    return " ".join(parts)
+
+
+# ── GET /api/monitor/logs ──────────────────────────────────────────────────
+
+
+@router.get("/logs", summary="Recent application logs (in-memory)")
+def get_logs(limit: int = 100, level: str | None = None):
+    """
+    Returns recent application logs from the in-memory ring buffer.
+    No database tracking — logs are ephemeral.
+    """
+    from core.log_buffer import log_buffer
+    return log_buffer.get_logs(limit=limit, level=level)
+
+
+# ── GET /api/monitor/traces ────────────────────────────────────────────────
+
+
+@router.get("/traces", summary="Document processing traces")
+def get_traces(limit: int = 20, db: Session = Depends(get_db)):
+    """
+    Build trace-like data from document lifecycle events.
+    Read-only — no new database tracking.
+    """
+    docs = (
+        db.query(Document)
+        .filter(Document.status.in_([
+            DocumentStatus.COMPLETED.value,
+            DocumentStatus.FAILED.value,
+            DocumentStatus.FAILED_PERMANENTLY.value,
+            DocumentStatus.PROCESSING.value,
+        ]))
+        .order_by(Document.updated_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    traces = []
+    for doc in docs:
+        created = doc.created_at
+        updated = doc.updated_at or created
+        if not created:
+            continue
+
+        total_duration_ms = int((updated - created).total_seconds() * 1000) if updated and created else 0
+
+        # Simulate spans based on status progression
+        spans = []
+        cursor = 0
+
+        # Span 1: Upload
+        upload_dur = max(int(total_duration_ms * 0.05), 10)
+        spans.append({
+            "name": "document.upload",
+            "service": "API Server",
+            "start_ms": cursor,
+            "duration_ms": upload_dur,
+            "status": "ok",
+            "tags": {"filename": doc.original_filename or "unknown", "size": doc.file_size or 0},
+        })
+        cursor += upload_dur
+
+        # Span 2: Kafka enqueue
+        kafka_dur = max(int(total_duration_ms * 0.03), 5)
+        spans.append({
+            "name": "kafka.produce",
+            "service": "Kafka Broker",
+            "start_ms": cursor,
+            "duration_ms": kafka_dur,
+            "status": "ok",
+            "tags": {"topic": topics.main_topic(doc.process_type), "partition": hash(doc.doc_key) % 3},
+        })
+        cursor += kafka_dur
+
+        # Span 3: Queue wait
+        queue_dur = max(int(total_duration_ms * 0.15), 20)
+        spans.append({
+            "name": "queue.wait",
+            "service": "Kafka Broker",
+            "start_ms": cursor,
+            "duration_ms": queue_dur,
+            "status": "ok",
+            "tags": {"consumer_group": topics.worker_group(doc.process_type)},
+        })
+        cursor += queue_dur
+
+        # Span 4: Processing
+        proc_dur = max(total_duration_ms - cursor - 10, 50)
+        proc_status = "error" if doc.status in (DocumentStatus.FAILED.value, DocumentStatus.FAILED_PERMANENTLY.value) else "ok"
+        spans.append({
+            "name": "document.process",
+            "service": "Document Worker",
+            "start_ms": cursor,
+            "duration_ms": proc_dur,
+            "status": proc_status,
+            "tags": {"type": doc.document_type, "retries": doc.retry_count},
+        })
+        cursor += proc_dur
+
+        # Span 5: Storage write (only if completed)
+        if doc.status == DocumentStatus.COMPLETED.value:
+            store_dur = max(int(total_duration_ms * 0.02), 5)
+            spans.append({
+                "name": "storage.write",
+                "service": "Document Storage",
+                "start_ms": cursor,
+                "duration_ms": store_dur,
+                "status": "ok",
+                "tags": {"dir": settings.DOCUMENT_STORAGE_DIR},
+            })
+
+        traces.append({
+            "trace_id": doc.doc_key[:16],
+            "doc_key": doc.doc_key,
+            "filename": doc.original_filename or "unknown",
+            "status": doc.status,
+            "total_duration_ms": total_duration_ms,
+            "span_count": len(spans),
+            "spans": spans,
+            "started_at": created.isoformat() if created else None,
+            "ended_at": updated.isoformat() if updated else None,
+        })
+
+    return traces
+
+
+# ── GET /api/monitor/alerts ────────────────────────────────────────────────
+
+
+@router.get("/alerts", summary="Computed alerts (threshold-based)")
+def get_alerts(db: Session = Depends(get_db)):
+    """
+    Compute alerts from current state. No database tracking — all ephemeral.
+    """
+    now = datetime.utcnow()
+    alerts = []
+
+    # Rule 1: Queue depth > 10
+    queued = (
+        db.query(func.count(Document.id))
+        .filter(Document.status == DocumentStatus.QUEUED.value)
+        .scalar() or 0
+    )
+    if queued > 10:
+        alerts.append({
+            "id": "queue-depth-high",
+            "severity": "warning",
+            "title": "High Queue Depth",
+            "message": f"{queued} documents are waiting in queue",
+            "service": "Kafka Broker",
+            "rule": "queue_depth > 10",
+            "value": queued,
+            "state": "firing",
+            "fired_at": now.isoformat(),
+        })
+    elif queued > 50:
+        alerts.append({
+            "id": "queue-depth-critical",
+            "severity": "critical",
+            "title": "Critical Queue Depth",
+            "message": f"{queued} documents are waiting in queue",
+            "service": "Kafka Broker",
+            "rule": "queue_depth > 50",
+            "value": queued,
+            "state": "firing",
+            "fired_at": now.isoformat(),
+        })
+
+    # Rule 2: Error rate > 10% in last hour
+    last_1h = now - timedelta(hours=1)
+    completed_1h = (
+        db.query(func.count(Document.id))
+        .filter(
+            Document.status == DocumentStatus.COMPLETED.value,
+            Document.updated_at >= last_1h,
+        ).scalar() or 0
+    )
+    failed_1h = (
+        db.query(func.count(Document.id))
+        .filter(
+            Document.status.in_([
+                DocumentStatus.FAILED.value,
+                DocumentStatus.FAILED_PERMANENTLY.value,
+            ]),
+            Document.updated_at >= last_1h,
+        ).scalar() or 0
+    )
+    total_1h = completed_1h + failed_1h
+    error_rate = round((failed_1h / total_1h) * 100, 1) if total_1h > 0 else 0
+
+    if error_rate > 10:
+        alerts.append({
+            "id": "error-rate-high",
+            "severity": "critical" if error_rate > 30 else "warning",
+            "title": "High Error Rate",
+            "message": f"{error_rate}% failure rate in the last hour ({failed_1h}/{total_1h})",
+            "service": "Document Worker",
+            "rule": "error_rate_1h > 10%",
+            "value": error_rate,
+            "state": "firing",
+            "fired_at": now.isoformat(),
+        })
+
+    # Rule 3: Stale processing — docs stuck in PROCESSING > 5 min
+    stale_cutoff = now - timedelta(minutes=5)
+    stale_processing = (
+        db.query(func.count(Document.id))
+        .filter(
+            Document.status == DocumentStatus.PROCESSING.value,
+            Document.updated_at < stale_cutoff,
+        ).scalar() or 0
+    )
+    if stale_processing > 0:
+        alerts.append({
+            "id": "stale-processing",
+            "severity": "warning",
+            "title": "Stale Processing Detected",
+            "message": f"{stale_processing} document(s) stuck in PROCESSING for >5 min",
+            "service": "Document Worker",
+            "rule": "processing_stale > 5min",
+            "value": stale_processing,
+            "state": "firing",
+            "fired_at": now.isoformat(),
+        })
+
+    # Rule 4: Kafka producer health
+    try:
+        from kafka_infra.producer import kafka_producer
+        if not kafka_producer._producer:
+            alerts.append({
+                "id": "kafka-disconnected",
+                "severity": "critical",
+                "title": "Kafka Producer Disconnected",
+                "message": "Kafka producer is not connected. Document processing is unavailable.",
+                "service": "Kafka Broker",
+                "rule": "kafka_producer.connected == false",
+                "value": 0,
+                "state": "firing",
+                "fired_at": now.isoformat(),
+            })
+    except Exception:
+        pass
+
+    # Rule 5: No activity in last 30 min (if there are queued docs)
+    if queued > 0:
+        last_30m = now - timedelta(minutes=30)
+        recent_activity = (
+            db.query(func.count(Document.id))
+            .filter(
+                Document.status == DocumentStatus.COMPLETED.value,
+                Document.updated_at >= last_30m,
+            ).scalar() or 0
+        )
+        if recent_activity == 0:
+            alerts.append({
+                "id": "worker-inactive",
+                "severity": "warning",
+                "title": "Worker Inactivity",
+                "message": f"No documents completed in 30 min but {queued} are queued",
+                "service": "Document Worker",
+                "rule": "worker_idle_30m && queue_depth > 0",
+                "value": queued,
+                "state": "firing",
+                "fired_at": now.isoformat(),
+            })
+
+    # Alert rules (for display, always returned)
+    rules = [
+        {"id": "queue-depth-high", "name": "High Queue Depth", "expr": "queue_depth > 10", "severity": "warning", "for": "0m"},
+        {"id": "queue-depth-critical", "name": "Critical Queue Depth", "expr": "queue_depth > 50", "severity": "critical", "for": "0m"},
+        {"id": "error-rate-high", "name": "High Error Rate", "expr": "error_rate_1h > 10%", "severity": "warning", "for": "0m"},
+        {"id": "stale-processing", "name": "Stale Processing", "expr": "processing_time > 5min", "severity": "warning", "for": "5m"},
+        {"id": "kafka-disconnected", "name": "Kafka Disconnected", "expr": "kafka_producer == down", "severity": "critical", "for": "0m"},
+        {"id": "worker-inactive", "name": "Worker Inactivity", "expr": "worker_idle_30m && queue > 0", "severity": "warning", "for": "30m"},
+    ]
+
+    return {
+        "alerts": alerts,
+        "rules": rules,
+        "total_firing": len(alerts),
+        "timestamp": now.isoformat(),
+    }
+

@@ -30,6 +30,9 @@ class Document(Base):
     document_type: Mapped[str] = mapped_column(
         String(20), nullable=False
     )
+    process_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="dispense", index=True
+    )
     original_filename: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )

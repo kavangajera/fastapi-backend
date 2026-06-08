@@ -1,463 +1,1993 @@
 <!DOCTYPE html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Queue RX | Pipeline Monitor</title>
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    colors: {
-                        dark: {
-                            bg: '#0f172a',      // slate-900
-                            surface: '#1e293b', // slate-800
-                            border: '#334155',  // slate-700
-                        },
-                        brand: {
-                            accent: '#3b82f6',  // blue-500
-                            glow: 'rgba(59, 130, 246, 0.5)',
-                        }
-                    },
-                    fontFamily: {
-                        sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
-                    }
-                }
-            }
-        }
-    </script>
+    <title>Queue RX | DevOps Observability</title>
+    <meta name="description" content="Queue RX DevOps Observability Dashboard — Real-time monitoring for document processing pipelines">
+
     <!-- Google Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <!-- Chart.js -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <!-- Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
+        /* ═══════════════════════════════════════════════════════════════════
+           DESIGN SYSTEM — DevOps Dark Mode
+           ═══════════════════════════════════════════════════════════════════ */
+        :root {
+            /* Background layers */
+            --bg-deepest:    #05080f;
+            --bg-base:       #0a0e1a;
+            --bg-surface:    #111827;
+            --bg-elevated:   #1a2332;
+            --bg-hover:      #1f2d40;
+
+            /* Borders */
+            --border-subtle:  #1e293b;
+            --border-default: #2a3a4e;
+            --border-strong:  #374151;
+
+            /* Text */
+            --text-primary:   #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted:     #64748b;
+            --text-dim:       #475569;
+
+            /* Accent palette */
+            --cyan:       #22d3ee;
+            --cyan-dim:   rgba(34, 211, 238, 0.15);
+            --cyan-glow:  rgba(34, 211, 238, 0.4);
+            --green:      #34d399;
+            --green-dim:  rgba(52, 211, 153, 0.15);
+            --amber:      #fbbf24;
+            --amber-dim:  rgba(251, 191, 36, 0.15);
+            --red:        #f87171;
+            --red-dim:    rgba(248, 113, 113, 0.15);
+            --violet:     #a78bfa;
+            --violet-dim: rgba(167, 139, 250, 0.15);
+            --pink:       #f472b6;
+            --pink-dim:   rgba(244, 114, 182, 0.15);
+            --orange:     #fb923c;
+            --orange-dim: rgba(251, 146, 60, 0.15);
+            --blue:       #60a5fa;
+            --blue-dim:   rgba(96, 165, 250, 0.15);
+
+            /* Layout */
+            --sidebar-width: 64px;
+            --sidebar-expanded: 220px;
+            --header-height: 56px;
+            --radius-sm: 6px;
+            --radius-md: 10px;
+            --radius-lg: 16px;
+
+            /* Transitions */
+            --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-base: 250ms cubic-bezier(0.4, 0, 0.2, 1);
+            --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* ── Reset ──────────────────────────────────────────────────────── */
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
         body {
-            font-family: 'Inter', sans-serif;
-            background-color: theme('colors.dark.bg');
-            color: #e2e8f0; /* slate-200 */
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-deepest);
+            color: var(--text-primary);
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
         }
-        .glass-panel {
-            background-color: theme('colors.dark.surface');
-            border: 1px solid theme('colors.dark.border');
-            border-radius: 1rem;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            backdrop-filter: blur(10px);
+
+        /* ── Scrollbar ──────────────────────────────────────────────────── */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           SIDEBAR
+           ═══════════════════════════════════════════════════════════════════ */
+        .sidebar {
+            width: var(--sidebar-width);
+            height: 100vh;
+            background: var(--bg-base);
+            border-right: 1px solid var(--border-subtle);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 0;
+            z-index: 100;
+            transition: width var(--transition-base);
+            flex-shrink: 0;
+            position: relative;
         }
-        .stat-card {
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+
+        .sidebar-logo {
+            width: 36px; height: 36px;
+            background: linear-gradient(135deg, var(--cyan), var(--violet));
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            margin-bottom: 24px;
+            position: relative;
+            cursor: pointer;
         }
-        .stat-card:hover {
+        .sidebar-logo::after {
+            content: '';
+            position: absolute;
+            inset: -2px;
+            border-radius: 8px;
+            background: linear-gradient(135deg, var(--cyan), var(--violet));
+            opacity: 0.3;
+            filter: blur(8px);
+            z-index: -1;
+        }
+        .sidebar-logo svg { color: white; width: 20px; height: 20px; }
+
+        .sidebar-nav { display: flex; flex-direction: column; gap: 4px; width: 100%; padding: 0 8px; flex: 1; }
+
+        .nav-item {
+            width: 48px; height: 44px;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: all var(--transition-fast);
+            position: relative;
+            border: 1px solid transparent;
+        }
+        .nav-item:hover { color: var(--text-secondary); background: var(--bg-hover); }
+        .nav-item.active {
+            color: var(--cyan);
+            background: var(--cyan-dim);
+            border-color: rgba(34, 211, 238, 0.2);
+        }
+        .nav-item.active::before {
+            content: '';
+            position: absolute;
+            left: -8px;
+            width: 3px; height: 24px;
+            background: var(--cyan);
+            border-radius: 0 3px 3px 0;
+        }
+        .nav-item svg { width: 20px; height: 20px; }
+
+        .nav-tooltip {
+            position: absolute;
+            left: 56px;
+            background: var(--bg-elevated);
+            color: var(--text-primary);
+            padding: 6px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 500;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateX(-4px);
+            transition: all var(--transition-fast);
+            border: 1px solid var(--border-default);
+            z-index: 200;
+        }
+        .nav-item:hover .nav-tooltip { opacity: 1; transform: translateX(0); }
+
+        .nav-divider { width: 32px; height: 1px; background: var(--border-subtle); margin: 8px auto; }
+
+        .sidebar-badge {
+            position: absolute;
+            top: 6px; right: 6px;
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            border: 2px solid var(--bg-base);
+        }
+
+        .sidebar-footer {
+            padding: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           MAIN LAYOUT
+           ═══════════════════════════════════════════════════════════════════ */
+        .main-wrapper {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            min-width: 0;
+        }
+
+        /* ── Top Header ─────────────────────────────────────────────────── */
+        .top-header {
+            height: var(--header-height);
+            background: var(--bg-base);
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 20px;
+            flex-shrink: 0;
+            z-index: 50;
+        }
+
+        .header-left { display: flex; align-items: center; gap: 16px; }
+        .header-title {
+            font-size: 15px;
+            font-weight: 700;
+            letter-spacing: -0.3px;
+            color: var(--text-primary);
+        }
+        .header-sub {
+            font-size: 11px;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .header-right { display: flex; align-items: center; gap: 16px; }
+
+        .live-indicator {
+            display: flex; align-items: center; gap: 8px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            background: var(--green-dim);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+        }
+        .live-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: var(--green);
+            position: relative;
+        }
+        .live-dot::before {
+            content: '';
+            position: absolute;
+            inset: -3px;
+            border-radius: 50%;
+            background: var(--green);
+            opacity: 0.4;
+            animation: livePulse 2s ease-in-out infinite;
+        }
+        @keyframes livePulse {
+            0%, 100% { transform: scale(1); opacity: 0.4; }
+            50% { transform: scale(1.5); opacity: 0; }
+        }
+        .live-text { font-size: 12px; font-weight: 600; color: var(--green); }
+
+        .header-stat {
+            text-align: right;
+        }
+        .header-stat-label {
+            font-size: 10px;
+            font-weight: 600;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        .header-stat-value {
+            font-size: 13px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            color: var(--text-secondary);
+        }
+
+        /* ── Content Area ───────────────────────────────────────────────── */
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 20px;
+            background: var(--bg-deepest);
+        }
+
+        .panel-view { display: none; animation: fadeIn 300ms ease; }
+        .panel-view.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           SHARED COMPONENTS
+           ═══════════════════════════════════════════════════════════════════ */
+
+        /* ── Panel Card ─────────────────────────────────────────────────── */
+        .card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            transition: border-color var(--transition-fast);
+        }
+        .card:hover { border-color: var(--border-default); }
+        .card-header {
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-subtle);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card-title {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .card-title svg { width: 16px; height: 16px; }
+        .card-body { padding: 20px; }
+        .card-body-flush { padding: 0; }
+
+        /* ── Grid ───────────────────────────────────────────────────────── */
+        .grid { display: grid; gap: 16px; }
+        .grid-2 { grid-template-columns: repeat(2, 1fr); }
+        .grid-3 { grid-template-columns: repeat(3, 1fr); }
+        .grid-4 { grid-template-columns: repeat(4, 1fr); }
+        .grid-5 { grid-template-columns: repeat(5, 1fr); }
+        .grid-23 { grid-template-columns: 2fr 1fr; }
+        .grid-12 { grid-template-columns: 1fr 2fr; }
+
+        /* ── KPI Stat ───────────────────────────────────────────────────── */
+        .kpi-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 16px 18px;
+            position: relative;
+            overflow: hidden;
+            transition: all var(--transition-fast);
+        }
+        .kpi-card:hover {
+            border-color: var(--border-default);
             transform: translateY(-2px);
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
-            border-color: theme('colors.brand.accent');
+            box-shadow: 0 8px 24px rgba(0,0,0,0.3);
         }
-        .status-pulse {
-            animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        .kpi-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            margin-bottom: 6px;
         }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: .5; transform: scale(1.1); }
+        .kpi-value {
+            font-size: 26px;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+            letter-spacing: -1px;
+            line-height: 1;
         }
-        
-        /* Custom scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
-            height: 8px;
+        .kpi-sub {
+            font-size: 11px;
+            color: var(--text-muted);
+            margin-top: 6px;
+            font-weight: 500;
         }
-        ::-webkit-scrollbar-track {
-            background: theme('colors.dark.bg');
+        .kpi-icon {
+            position: absolute;
+            top: 14px; right: 14px;
+            opacity: 0.1;
         }
-        ::-webkit-scrollbar-thumb {
-            background: theme('colors.dark.border');
+        .kpi-icon svg { width: 32px; height: 32px; }
+        .kpi-sparkline {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            height: 30px;
+            opacity: 0.3;
+        }
+
+        /* ── Gauge ──────────────────────────────────────────────────────── */
+        .gauge-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 8px;
+        }
+        .gauge-ring {
+            position: relative;
+            width: 100px; height: 100px;
+        }
+        .gauge-ring svg {
+            width: 100%; height: 100%;
+            transform: rotate(-90deg);
+        }
+        .gauge-ring .bg { stroke: var(--border-subtle); }
+        .gauge-ring .fg {
+            transition: stroke-dashoffset 1s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .gauge-value {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: 700;
+            font-family: 'JetBrains Mono', monospace;
+        }
+        .gauge-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* ── Status Badge ───────────────────────────────────────────────── */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 3px 10px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            border: 1px solid;
+        }
+        .badge-green { color: var(--green); background: var(--green-dim); border-color: rgba(52,211,153,0.2); }
+        .badge-amber { color: var(--amber); background: var(--amber-dim); border-color: rgba(251,191,36,0.2); }
+        .badge-red { color: var(--red); background: var(--red-dim); border-color: rgba(248,113,113,0.2); }
+        .badge-blue { color: var(--blue); background: var(--blue-dim); border-color: rgba(96,165,250,0.2); }
+        .badge-violet { color: var(--violet); background: var(--violet-dim); border-color: rgba(167,139,250,0.2); }
+        .badge-cyan { color: var(--cyan); background: var(--cyan-dim); border-color: rgba(34,211,238,0.2); }
+
+        .badge-dot {
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* ── Table ──────────────────────────────────────────────────────── */
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th {
+            text-align: left;
+            padding: 10px 16px;
+            font-size: 10px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+            background: var(--bg-elevated);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .data-table td {
+            padding: 10px 16px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .data-table tr:hover td { background: var(--bg-hover); }
+        .data-table .mono { font-family: 'JetBrains Mono', monospace; font-size: 12px; }
+
+        /* ── Service Node ───────────────────────────────────────────────── */
+        .service-card {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 16px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            transition: all var(--transition-fast);
+            cursor: default;
+        }
+        .service-card:hover {
+            border-color: var(--border-default);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+        .service-icon {
+            width: 40px; height: 40px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .service-icon svg { width: 20px; height: 20px; }
+        .service-name { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+        .service-detail { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+        .service-status {
+            margin-left: auto;
+            display: flex; align-items: center; gap: 6px;
+            font-size: 11px; font-weight: 600;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .status-dot {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+        }
+        .status-dot.pulse { animation: livePulse 2s ease-in-out infinite; }
+
+        /* ── Chart Controls ─────────────────────────────────────────────── */
+        .time-range-selector {
+            display: flex;
+            gap: 2px;
+            background: var(--bg-elevated);
+            padding: 3px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-subtle);
+        }
+        .time-range-btn {
+            padding: 4px 12px;
+            border-radius: 4px;
+            border: none;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all var(--transition-fast);
+            font-family: 'Inter', sans-serif;
+        }
+        .time-range-btn:hover { color: var(--text-secondary); }
+        .time-range-btn.active {
+            background: var(--cyan-dim);
+            color: var(--cyan);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           PANEL: LOG STREAM (Loki-style)
+           ═══════════════════════════════════════════════════════════════════ */
+        .log-terminal {
+            background: var(--bg-deepest);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            line-height: 1.7;
+            height: 520px;
+            overflow-y: auto;
+            padding: 0;
+        }
+        .log-line {
+            padding: 2px 16px;
+            display: flex;
+            gap: 12px;
+            border-bottom: 1px solid rgba(30, 41, 59, 0.3);
+            transition: background var(--transition-fast);
+        }
+        .log-line:hover { background: var(--bg-hover); }
+        .log-ts { color: var(--text-dim); flex-shrink: 0; min-width: 180px; }
+        .log-lvl {
+            flex-shrink: 0;
+            min-width: 60px;
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 11px;
+            padding-top: 1px;
+        }
+        .log-lvl.DEBUG { color: var(--text-dim); }
+        .log-lvl.INFO  { color: var(--green); }
+        .log-lvl.WARNING { color: var(--amber); }
+        .log-lvl.ERROR { color: var(--red); }
+        .log-lvl.CRITICAL { color: var(--pink); }
+        .log-msg { color: var(--text-secondary); word-break: break-all; flex: 1; }
+
+        .log-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .log-filter-btn {
+            padding: 4px 10px;
+            border-radius: 4px;
+            border: 1px solid var(--border-subtle);
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: all var(--transition-fast);
+        }
+        .log-filter-btn:hover { border-color: var(--border-default); color: var(--text-secondary); }
+        .log-filter-btn.active { border-color: var(--cyan); color: var(--cyan); background: var(--cyan-dim); }
+
+        .log-search {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 6px 12px;
+            color: var(--text-primary);
+            font-size: 12px;
+            font-family: 'JetBrains Mono', monospace;
+            outline: none;
+            width: 220px;
+            transition: border-color var(--transition-fast);
+        }
+        .log-search:focus { border-color: var(--cyan); }
+        .log-search::placeholder { color: var(--text-dim); }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           PANEL: TRACE WATERFALL (Tempo/Jaeger)
+           ═══════════════════════════════════════════════════════════════════ */
+        .trace-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            margin-bottom: 8px;
+            overflow: hidden;
+            transition: border-color var(--transition-fast);
+        }
+        .trace-item:hover { border-color: var(--border-default); }
+        .trace-header {
+            padding: 12px 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            transition: background var(--transition-fast);
+        }
+        .trace-header:hover { background: var(--bg-hover); }
+        .trace-header-left { display: flex; align-items: center; gap: 12px; }
+        .trace-id {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--cyan);
+            font-weight: 600;
+        }
+        .trace-filename { font-size: 13px; color: var(--text-secondary); font-weight: 500; }
+        .trace-duration {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .trace-spans-container {
+            display: none;
+            padding: 0 16px 16px;
+        }
+        .trace-item.expanded .trace-spans-container { display: block; }
+        .trace-item.expanded { border-color: var(--border-default); }
+
+        .span-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 6px 0;
+            font-size: 12px;
+        }
+        .span-service {
+            width: 130px;
+            flex-shrink: 0;
+            font-weight: 500;
+            color: var(--text-muted);
+            text-align: right;
+            font-size: 11px;
+        }
+        .span-bar-container {
+            flex: 1;
+            height: 22px;
+            position: relative;
+            background: rgba(30, 41, 59, 0.3);
             border-radius: 4px;
         }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #475569; /* slate-600 */
+        .span-bar {
+            position: absolute;
+            height: 100%;
+            border-radius: 4px;
+            min-width: 4px;
+            display: flex;
+            align-items: center;
+            padding-left: 8px;
+            font-size: 10px;
+            font-weight: 600;
+            font-family: 'JetBrains Mono', monospace;
+            color: white;
+            white-space: nowrap;
+            overflow: hidden;
+            transition: width 0.5s ease;
         }
+        .span-duration {
+            width: 60px;
+            flex-shrink: 0;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--text-dim);
+            text-align: right;
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           PANEL: SERVICE MAP (OpenTelemetry)
+           ═══════════════════════════════════════════════════════════════════ */
+        .service-map-canvas {
+            width: 100%;
+            height: 420px;
+            border-radius: var(--radius-md);
+            background: var(--bg-deepest);
+            border: 1px solid var(--border-subtle);
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           PANEL: ALERT MANAGER (Alertmanager)
+           ═══════════════════════════════════════════════════════════════════ */
+        .alert-item {
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-md);
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            margin-bottom: 8px;
+            transition: all var(--transition-fast);
+            border-left: 3px solid transparent;
+        }
+        .alert-item.critical { border-left-color: var(--red); }
+        .alert-item.warning { border-left-color: var(--amber); }
+        .alert-item:hover { background: var(--bg-hover); }
+
+        .alert-severity-icon {
+            width: 36px; height: 36px;
+            border-radius: var(--radius-sm);
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .alert-severity-icon svg { width: 18px; height: 18px; }
+        .alert-severity-icon.critical { background: var(--red-dim); color: var(--red); }
+        .alert-severity-icon.warning { background: var(--amber-dim); color: var(--amber); }
+
+        .alert-info { flex: 1; }
+        .alert-title { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+        .alert-message { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+        .alert-meta {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .alert-meta span { display: flex; align-items: center; gap: 4px; }
+        .alert-meta svg { width: 12px; height: 12px; }
+
+        .alert-actions { display: flex; gap: 8px; }
+        .alert-btn {
+            padding: 5px 12px;
+            border-radius: 4px;
+            border: 1px solid var(--border-subtle);
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'Inter', sans-serif;
+            transition: all var(--transition-fast);
+        }
+        .alert-btn:hover { border-color: var(--border-default); color: var(--text-secondary); }
+        .alert-btn.ack { border-color: rgba(52,211,153,0.3); color: var(--green); }
+        .alert-btn.ack:hover { background: var(--green-dim); }
+
+        .rules-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+        .rule-item {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
+        }
+        .rule-name { font-size: 12px; font-weight: 600; color: var(--text-primary); margin-bottom: 4px; }
+        .rule-expr {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 11px;
+            color: var(--violet);
+            background: var(--violet-dim);
+            padding: 3px 8px;
+            border-radius: 3px;
+            display: inline-block;
+        }
+        .rule-meta { font-size: 11px; color: var(--text-dim); margin-top: 6px; }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           EMPTY STATE
+           ═══════════════════════════════════════════════════════════════════ */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 60px 20px;
+            color: var(--text-dim);
+        }
+        .empty-state svg { width: 48px; height: 48px; margin-bottom: 16px; opacity: 0.3; }
+        .empty-state p { font-size: 14px; font-weight: 500; }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           RESPONSIVE
+           ═══════════════════════════════════════════════════════════════════ */
+        @media (max-width: 1024px) {
+            .grid-4, .grid-5 { grid-template-columns: repeat(2, 1fr); }
+            .grid-3 { grid-template-columns: 1fr; }
+            .grid-23, .grid-12 { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 640px) {
+            .grid-4, .grid-5, .grid-2 { grid-template-columns: 1fr; }
+            .sidebar { width: 52px; }
+            .sidebar .nav-item { width: 36px; height: 36px; }
+            .content-area { padding: 12px; }
+        }
+
+        /* ═══════════════════════════════════════════════════════════════════
+           SECTION HEADERS
+           ═══════════════════════════════════════════════════════════════════ */
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 16px;
+        }
+        .section-header h2 {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+        }
+        .section-header svg { width: 14px; height: 14px; color: var(--text-dim); }
+        .section-header::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border-subtle);
+            margin-left: 12px;
+        }
+
+        .mb-16 { margin-bottom: 16px; }
+        .mb-20 { margin-bottom: 20px; }
+        .mb-24 { margin-bottom: 24px; }
+        .mt-20 { margin-top: 20px; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col antialiased">
+<body>
 
-    <!-- Header -->
-    <header class="glass-panel mx-4 mt-4 px-6 py-4 flex items-center justify-between sticky top-4 z-50">
-        <div class="flex items-center space-x-3">
-            <div class="p-2 bg-brand-accent/20 rounded-lg border border-brand-accent/30">
-                <i data-lucide="activity" class="w-6 h-6 text-brand-accent"></i>
-            </div>
-            <div>
-                <h1 class="text-xl font-bold tracking-tight text-white">Queue RX Pipeline</h1>
-                <p class="text-xs text-slate-400 font-medium">Distributed Document Processing</p>
-            </div>
-        </div>
-        <div class="flex items-center space-x-6">
-            <div class="flex items-center space-x-2">
-                <span class="relative flex h-3 w-3">
-                  <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                  <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
-                </span>
-                <span class="text-sm font-medium text-slate-300">Live Heartbeat</span>
-            </div>
-            <div class="text-right">
-                <div class="text-xs text-slate-400 uppercase tracking-wider font-semibold">Last Updated</div>
-                <div id="last-updated" class="text-sm font-mono text-slate-200">--:--:--</div>
-            </div>
-        </div>
-    </header>
-
-    <!-- Main Content -->
-    <main class="flex-1 p-4 space-y-6">
-
-        <!-- Architecture Health -->
-        <section>
-            <h2 class="text-sm font-bold text-slate-400 uppercase tracking-widest mb-3 px-1 flex items-center">
-                <i data-lucide="server" class="w-4 h-4 mr-2"></i> Architecture Status
-            </h2>
-            <div id="services-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                <!-- Service Cards Injected Here -->
-            </div>
-        </section>
-
-        <!-- KPI Metrics -->
-        <section>
-            <div id="kpi-grid" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                <!-- KPI Cards Injected Here -->
-            </div>
-        </section>
-
-        <!-- Charts & Activity -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <!-- Timeline Chart -->
-            <div class="lg:col-span-2 glass-panel p-5 flex flex-col">
-                <div class="flex items-center justify-between mb-4">
-                    <h2 class="text-base font-semibold text-white flex items-center">
-                        <i data-lucide="bar-chart-2" class="w-5 h-5 mr-2 text-indigo-400"></i>
-                        Throughput (24h)
-                    </h2>
-                </div>
-                <div class="flex-1 relative w-full h-[300px]">
-                    <canvas id="throughputChart"></canvas>
-                </div>
-            </div>
-
-            <!-- Pipeline Config -->
-            <div class="glass-panel p-5 flex flex-col">
-                <h2 class="text-base font-semibold text-white flex items-center mb-4">
-                    <i data-lucide="settings" class="w-5 h-5 mr-2 text-slate-400"></i>
-                    Pipeline Config
-                </h2>
-                <div class="flex-1 overflow-y-auto">
-                    <ul id="config-list" class="space-y-3">
-                        <!-- Config items injected here -->
-                    </ul>
-                </div>
-            </div>
+    <!-- ═══════════════════════════════════════════════════════════════════
+         SIDEBAR
+         ═══════════════════════════════════════════════════════════════════ -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo" title="Queue RX">
+            <i data-lucide="radio-tower"></i>
         </div>
 
-        <!-- Recent Documents Table -->
-        <section class="glass-panel p-0 overflow-hidden">
-            <div class="px-5 py-4 border-b border-dark-border flex justify-between items-center bg-dark-surface/50">
-                <h2 class="text-base font-semibold text-white flex items-center">
-                    <i data-lucide="file-text" class="w-5 h-5 mr-2 text-blue-400"></i>
-                    Current Processing & Recent Documents
-                </h2>
-                <span id="total-docs-badge" class="px-2.5 py-1 text-xs font-medium bg-slate-800 text-slate-300 rounded-full border border-slate-700">
-                    Total: --
-                </span>
+        <nav class="sidebar-nav">
+            <div class="nav-item active" data-panel="overview" id="nav-overview">
+                <i data-lucide="layout-dashboard"></i>
+                <span class="nav-tooltip">Overview</span>
             </div>
-            <div class="overflow-x-auto">
-                <table class="w-full text-sm text-left">
-                    <thead class="text-xs text-slate-400 uppercase bg-slate-800/50">
-                        <tr>
-                            <th class="px-5 py-3 font-semibold">Document Key</th>
-                            <th class="px-5 py-3 font-semibold">File</th>
-                            <th class="px-5 py-3 font-semibold">Status</th>
-                            <th class="px-5 py-3 font-semibold">Type</th>
-                            <th class="px-5 py-3 font-semibold text-right">Updated</th>
-                        </tr>
-                    </thead>
-                    <tbody id="docs-table-body" class="divide-y divide-dark-border">
-                        <!-- Rows injected here -->
-                    </tbody>
-                </table>
+            <div class="nav-item" data-panel="metrics" id="nav-metrics">
+                <i data-lucide="gauge"></i>
+                <span class="nav-tooltip">Metrics</span>
             </div>
-        </section>
+            <div class="nav-item" data-panel="charts" id="nav-charts">
+                <i data-lucide="bar-chart-3"></i>
+                <span class="nav-tooltip">Grafana</span>
+            </div>
 
-    </main>
+            <div class="nav-divider"></div>
 
-    <footer class="p-4 text-center text-xs text-slate-500">
-        Queue RX Document Processing Architecture &copy; 2026
-    </footer>
+            <div class="nav-item" data-panel="logs" id="nav-logs">
+                <i data-lucide="scroll-text"></i>
+                <span class="nav-tooltip">Logs</span>
+            </div>
+            <div class="nav-item" data-panel="traces" id="nav-traces">
+                <i data-lucide="git-branch"></i>
+                <span class="nav-tooltip">Traces</span>
+            </div>
+            <div class="nav-item" data-panel="servicemap" id="nav-servicemap">
+                <i data-lucide="network"></i>
+                <span class="nav-tooltip">Service Map</span>
+            </div>
 
-    <!-- Application Logic -->
+            <div class="nav-divider"></div>
+
+            <div class="nav-item" data-panel="alerts" id="nav-alerts" style="position:relative;">
+                <i data-lucide="bell"></i>
+                <span class="nav-tooltip">Alerts</span>
+                <span class="sidebar-badge" id="alert-badge" style="background: var(--red); display:none;"></span>
+            </div>
+        </nav>
+
+        <div class="sidebar-footer">
+            <div class="nav-item" data-panel="config" id="nav-config">
+                <i data-lucide="settings"></i>
+                <span class="nav-tooltip">Config</span>
+            </div>
+        </div>
+    </aside>
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         MAIN WRAPPER
+         ═══════════════════════════════════════════════════════════════════ -->
+    <div class="main-wrapper">
+        <!-- Top Header -->
+        <header class="top-header">
+            <div class="header-left">
+                <div>
+                    <div class="header-title">Queue RX Observability</div>
+                    <div class="header-sub">Document Processing Pipeline</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="live-indicator">
+                    <span class="live-dot"></span>
+                    <span class="live-text">Live</span>
+                </div>
+                <div class="header-stat">
+                    <div class="header-stat-label">Uptime</div>
+                    <div class="header-stat-value" id="hdr-uptime">--</div>
+                </div>
+                <div class="header-stat">
+                    <div class="header-stat-label">Updated</div>
+                    <div class="header-stat-value" id="hdr-updated">--:--:--</div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Content Panels -->
+        <div class="content-area" id="content-area">
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: OVERVIEW (Home)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view active" id="panel-overview">
+                <!-- Services Grid -->
+                <div class="section-header"><i data-lucide="server"></i><h2>Architecture Status</h2></div>
+                <div class="grid grid-5 mb-24" id="services-grid"></div>
+
+                <!-- KPIs -->
+                <div class="section-header"><i data-lucide="trending-up"></i><h2>Pipeline KPIs</h2></div>
+                <div class="grid grid-5 mb-24" id="kpi-grid"></div>
+
+                <!-- Throughput + Recent Docs -->
+                <div class="grid grid-23 mb-20">
+                    <!-- Throughput Chart -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title"><i data-lucide="bar-chart-2" style="color: var(--cyan)"></i> Throughput (24h)</span>
+                        </div>
+                        <div class="card-body">
+                            <div style="height: 260px; position: relative;">
+                                <canvas id="throughputChartOverview"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Status Distribution -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title"><i data-lucide="pie-chart" style="color: var(--violet)"></i> Status Distribution</span>
+                        </div>
+                        <div class="card-body" style="display:flex;align-items:center;justify-content:center;">
+                            <div style="width: 220px; height: 220px; position: relative;">
+                                <canvas id="statusDoughnutChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Documents -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title"><i data-lucide="file-text" style="color: var(--blue)"></i> Recent Documents</span>
+                        <span class="badge badge-cyan" id="total-docs-badge">Total: --</span>
+                    </div>
+                    <div class="card-body-flush" style="max-height: 340px; overflow-y: auto;">
+                        <table class="data-table" id="docs-table">
+                            <thead>
+                                <tr>
+                                    <th>Doc Key</th>
+                                    <th>File</th>
+                                    <th>Status</th>
+                                    <th>Type</th>
+                                    <th style="text-align:right">Updated</th>
+                                </tr>
+                            </thead>
+                            <tbody id="docs-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: METRICS (Prometheus-style)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-metrics">
+                <div class="section-header"><i data-lucide="gauge"></i><h2>Prometheus — System Metrics</h2></div>
+
+                <!-- Gauges -->
+                <div class="grid grid-4 mb-24">
+                    <div class="card">
+                        <div class="card-body" style="display:flex;justify-content:center;">
+                            <div class="gauge-container">
+                                <div class="gauge-ring" id="gauge-memory">
+                                    <svg viewBox="0 0 100 100">
+                                        <circle class="bg" cx="50" cy="50" r="42" fill="none" stroke-width="6"/>
+                                        <circle class="fg" cx="50" cy="50" r="42" fill="none" stroke-width="6"
+                                                stroke="var(--cyan)" stroke-linecap="round"
+                                                stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                                    </svg>
+                                    <div class="gauge-value" style="color: var(--cyan)">--%</div>
+                                </div>
+                                <div class="gauge-label">Memory Usage</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body" style="display:flex;justify-content:center;">
+                            <div class="gauge-container">
+                                <div class="gauge-ring" id="gauge-disk">
+                                    <svg viewBox="0 0 100 100">
+                                        <circle class="bg" cx="50" cy="50" r="42" fill="none" stroke-width="6"/>
+                                        <circle class="fg" cx="50" cy="50" r="42" fill="none" stroke-width="6"
+                                                stroke="var(--violet)" stroke-linecap="round"
+                                                stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                                    </svg>
+                                    <div class="gauge-value" style="color: var(--violet)">--%</div>
+                                </div>
+                                <div class="gauge-label">Disk Usage</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body" style="display:flex;justify-content:center;">
+                            <div class="gauge-container">
+                                <div class="gauge-ring" id="gauge-success">
+                                    <svg viewBox="0 0 100 100">
+                                        <circle class="bg" cx="50" cy="50" r="42" fill="none" stroke-width="6"/>
+                                        <circle class="fg" cx="50" cy="50" r="42" fill="none" stroke-width="6"
+                                                stroke="var(--green)" stroke-linecap="round"
+                                                stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                                    </svg>
+                                    <div class="gauge-value" style="color: var(--green)">--%</div>
+                                </div>
+                                <div class="gauge-label">Success Rate</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-body" style="display:flex;justify-content:center;">
+                            <div class="gauge-container">
+                                <div class="gauge-ring" id="gauge-cpu">
+                                    <svg viewBox="0 0 100 100">
+                                        <circle class="bg" cx="50" cy="50" r="42" fill="none" stroke-width="6"/>
+                                        <circle class="fg" cx="50" cy="50" r="42" fill="none" stroke-width="6"
+                                                stroke="var(--orange)" stroke-linecap="round"
+                                                stroke-dasharray="263.9" stroke-dashoffset="263.9"/>
+                                    </svg>
+                                    <div class="gauge-value" style="color: var(--orange)">--</div>
+                                </div>
+                                <div class="gauge-label">CPU Cores</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metric KPIs -->
+                <div class="section-header"><i data-lucide="cpu"></i><h2>Runtime Info</h2></div>
+                <div class="grid grid-4 mb-24" id="metrics-kpi-grid"></div>
+
+                <!-- GC Stats -->
+                <div class="section-header"><i data-lucide="trash-2"></i><h2>Garbage Collection</h2></div>
+                <div class="card">
+                    <div class="card-body-flush">
+                        <table class="data-table" id="gc-table">
+                            <thead>
+                                <tr><th>Generation</th><th>Collections</th><th>Collected</th><th>Uncollectable</th></tr>
+                            </thead>
+                            <tbody id="gc-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: CHARTS (Grafana-style)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-charts">
+                <div class="section-header"><i data-lucide="bar-chart-3"></i><h2>Grafana — Time Series Dashboard</h2></div>
+
+                <!-- Main Throughput Chart -->
+                <div class="card mb-20">
+                    <div class="card-header">
+                        <span class="card-title"><i data-lucide="trending-up" style="color: var(--cyan)"></i> Pipeline Throughput</span>
+                        <div class="time-range-selector">
+                            <button class="time-range-btn" data-hours="1" onclick="changeTimeRange(1)">1H</button>
+                            <button class="time-range-btn" data-hours="6" onclick="changeTimeRange(6)">6H</button>
+                            <button class="time-range-btn active" data-hours="12" onclick="changeTimeRange(12)">12H</button>
+                            <button class="time-range-btn" data-hours="24" onclick="changeTimeRange(24)">24H</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div style="height: 320px; position: relative;">
+                            <canvas id="mainThroughputChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Charts Grid -->
+                <div class="grid grid-2">
+                    <!-- Status Distribution -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title"><i data-lucide="pie-chart" style="color: var(--violet)"></i> Status Distribution</span>
+                        </div>
+                        <div class="card-body" style="display:flex;align-items:center;justify-content:center;height:280px;">
+                            <canvas id="statusChartGrafana"></canvas>
+                        </div>
+                    </div>
+                    <!-- Type Breakdown -->
+                    <div class="card">
+                        <div class="card-header">
+                            <span class="card-title"><i data-lucide="files" style="color: var(--pink)"></i> Document Types</span>
+                        </div>
+                        <div class="card-body" style="display:flex;align-items:center;justify-content:center;height:280px;">
+                            <canvas id="typeChartGrafana"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: LOGS (Loki-style)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-logs">
+                <div class="section-header"><i data-lucide="scroll-text"></i><h2>Loki — Log Stream</h2></div>
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title"><i data-lucide="terminal" style="color: var(--green)"></i> Application Logs</span>
+                        <div class="log-controls">
+                            <input type="text" class="log-search" id="log-search" placeholder="Search logs...">
+                            <button class="log-filter-btn active" data-level="ALL" onclick="setLogFilter('ALL')">ALL</button>
+                            <button class="log-filter-btn" data-level="INFO" onclick="setLogFilter('INFO')">INFO</button>
+                            <button class="log-filter-btn" data-level="WARNING" onclick="setLogFilter('WARNING')">WARN</button>
+                            <button class="log-filter-btn" data-level="ERROR" onclick="setLogFilter('ERROR')">ERR</button>
+                            <button class="log-filter-btn" id="log-autoscroll-btn" onclick="toggleAutoScroll()" style="color: var(--green);">
+                                <i data-lucide="arrow-down-to-line" style="width:14px;height:14px;"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="card-body-flush">
+                        <div class="log-terminal" id="log-terminal"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: TRACES (Tempo/Jaeger-style)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-traces">
+                <div class="section-header"><i data-lucide="git-branch"></i><h2>Tempo — Distributed Traces</h2></div>
+
+                <!-- Trace Stats -->
+                <div class="grid grid-4 mb-20" id="trace-stats-grid"></div>
+
+                <!-- Trace List -->
+                <div id="trace-list"></div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: SERVICE MAP (OpenTelemetry-style)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-servicemap">
+                <div class="section-header"><i data-lucide="network"></i><h2>OpenTelemetry — Service Dependency Map</h2></div>
+                <div class="card mb-20">
+                    <div class="card-header">
+                        <span class="card-title"><i data-lucide="share-2" style="color: var(--cyan)"></i> Live Service Topology</span>
+                        <span class="badge badge-green"><span class="badge-dot"></span> Real-time</span>
+                    </div>
+                    <div class="card-body-flush">
+                        <canvas class="service-map-canvas" id="serviceMapCanvas"></canvas>
+                    </div>
+                </div>
+
+                <!-- Service Details -->
+                <div class="section-header"><i data-lucide="server"></i><h2>Service Details</h2></div>
+                <div class="grid grid-3" id="service-detail-grid"></div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: ALERTS (Alertmanager-style)
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-alerts">
+                <div class="section-header"><i data-lucide="bell"></i><h2>Alertmanager — Active Alerts</h2></div>
+
+                <!-- Alert Stats -->
+                <div class="grid grid-3 mb-20" id="alert-stats-grid"></div>
+
+                <!-- Active Alerts -->
+                <div class="card mb-20">
+                    <div class="card-header">
+                        <span class="card-title"><i data-lucide="alert-triangle" style="color: var(--red)"></i> Firing Alerts</span>
+                        <span class="badge badge-red" id="firing-count-badge">0 firing</span>
+                    </div>
+                    <div class="card-body" id="alerts-container">
+                        <div class="empty-state" id="alerts-empty">
+                            <i data-lucide="shield-check"></i>
+                            <p>All systems operational — no alerts firing</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alert Rules -->
+                <div class="card">
+                    <div class="card-header">
+                        <span class="card-title"><i data-lucide="list-checks" style="color: var(--violet)"></i> Alert Rules</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="rules-grid" id="rules-grid"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ══════════════════════════════════════════════════════════════
+                 PANEL: CONFIG
+                 ══════════════════════════════════════════════════════════════ -->
+            <div class="panel-view" id="panel-config">
+                <div class="section-header"><i data-lucide="settings"></i><h2>Pipeline Configuration</h2></div>
+                <div class="card">
+                    <div class="card-body-flush">
+                        <table class="data-table">
+                            <thead><tr><th>Parameter</th><th>Value</th></tr></thead>
+                            <tbody id="config-table-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /content-area -->
+    </div><!-- /main-wrapper -->
+
+    <!-- ═══════════════════════════════════════════════════════════════════
+         APPLICATION LOGIC
+         ═══════════════════════════════════════════════════════════════════ -->
     <script>
-        // Initialize Icons
+        // ── Initialize Lucide Icons ──────────────────────────────────────
         lucide.createIcons();
 
-        // Chart Instance
-        let throughputChart;
+        // ── State ────────────────────────────────────────────────────────
+        let currentPanel = 'overview';
+        let currentTimeRange = 12;
+        let logAutoScroll = true;
+        let logFilter = 'ALL';
+        let chartInstances = {};
+        let serviceMapAnimFrame = null;
+        let acknowledgedAlerts = new Set();
 
-        // Fetch utilities
+        // ── Chart.js Defaults ────────────────────────────────────────────
+        Chart.defaults.color = '#64748b';
+        Chart.defaults.borderColor = '#1e293b';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+
+        // ── Fetch Utilities ──────────────────────────────────────────────
         async function fetchAPI(endpoint) {
             try {
                 const res = await fetch(`/api/monitor/${endpoint}`);
-                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 return await res.json();
             } catch (e) {
-                console.error(`Failed fetching ${endpoint}:`, e);
+                console.error(`[fetch] ${endpoint}:`, e);
                 return null;
             }
         }
 
-        // Formatters
-        const formatTime = (isoString) => {
-            if (!isoString) return '--';
-            const d = new Date(isoString);
-            return d.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second:'2-digit' });
+        // ── Formatters ───────────────────────────────────────────────────
+        const fmtTime = (iso) => {
+            if (!iso) return '--';
+            return new Date(iso).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        };
+        const fmtBytes = (b) => {
+            if (!b) return '0 B';
+            const k = 1024, s = ['B','KB','MB','GB'];
+            const i = Math.floor(Math.log(b) / Math.log(k));
+            return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + s[i];
+        };
+        const fmtMs = (ms) => {
+            if (ms < 1000) return ms + 'ms';
+            return (ms / 1000).toFixed(2) + 's';
         };
 
-        const formatBytes = (bytes) => {
-            if (bytes === 0 || !bytes) return '0 B';
-            const k = 1024;
-            const sizes = ['B', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        const statusBadgeClass = (s) => {
+            s = (s || '').toUpperCase();
+            if (s === 'COMPLETED') return 'badge-green';
+            if (s === 'PROCESSING') return 'badge-blue';
+            if (s === 'QUEUED') return 'badge-amber';
+            if (s === 'FAILED' || s === 'FAILED_PERMANENTLY') return 'badge-red';
+            if (s === 'RETRYING') return 'badge-amber';
+            return 'badge-cyan';
         };
 
-        const getStatusColor = (status) => {
-            const s = (status || '').toUpperCase();
-            if (s === 'COMPLETED') return 'text-emerald-400 bg-emerald-400/10 border-emerald-400/20';
-            if (s === 'PROCESSING') return 'text-blue-400 bg-blue-400/10 border-blue-400/20 animate-pulse';
-            if (s === 'QUEUED') return 'text-amber-400 bg-amber-400/10 border-amber-400/20';
-            if (s === 'FAILED' || s === 'FAILED_PERMANENTLY') return 'text-rose-400 bg-rose-400/10 border-rose-400/20';
-            if (s === 'RETRYING') return 'text-orange-400 bg-orange-400/10 border-orange-400/20';
-            return 'text-slate-400 bg-slate-400/10 border-slate-400/20';
+        const serviceStatusColor = (s) => {
+            if (s === 'healthy') return { text: 'var(--green)', bg: 'var(--green-dim)', dot: 'var(--green)' };
+            if (s === 'idle') return { text: 'var(--blue)', bg: 'var(--blue-dim)', dot: 'var(--blue)' };
+            if (s === 'warning') return { text: 'var(--amber)', bg: 'var(--amber-dim)', dot: 'var(--amber)' };
+            return { text: 'var(--red)', bg: 'var(--red-dim)', dot: 'var(--red)' };
         };
 
-        // Render Functions
+        // ═══════════════════════════════════════════════════════════════════
+        //  NAVIGATION
+        // ═══════════════════════════════════════════════════════════════════
+        document.querySelectorAll('.nav-item[data-panel]').forEach(item => {
+            item.addEventListener('click', () => {
+                const panel = item.dataset.panel;
+                switchPanel(panel);
+            });
+        });
+
+        function switchPanel(panel) {
+            currentPanel = panel;
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            const navItem = document.querySelector(`.nav-item[data-panel="${panel}"]`);
+            if (navItem) navItem.classList.add('active');
+
+            document.querySelectorAll('.panel-view').forEach(p => p.classList.remove('active'));
+            const panelEl = document.getElementById(`panel-${panel}`);
+            if (panelEl) panelEl.classList.add('active');
+
+            // Trigger chart resize when switching
+            setTimeout(() => {
+                Object.values(chartInstances).forEach(c => c && c.resize && c.resize());
+                if (panel === 'servicemap') drawServiceMap();
+            }, 50);
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Overview — Services
+        // ═══════════════════════════════════════════════════════════════════
         function renderServices(services) {
-            const grid = document.getElementById('services-grid');
             if (!services) return;
-            
+            const grid = document.getElementById('services-grid');
             grid.innerHTML = services.map(srv => {
-                const isHealthy = srv.status === 'healthy' || srv.status === 'idle';
-                const color = isHealthy ? 'text-emerald-400' : (srv.status === 'warning' ? 'text-amber-400' : 'text-rose-400');
-                const dotColor = isHealthy ? 'bg-emerald-500' : (srv.status === 'warning' ? 'bg-amber-500' : 'bg-rose-500');
-                
+                const c = serviceStatusColor(srv.status);
+                const isOk = srv.status === 'healthy' || srv.status === 'idle';
                 return `
-                    <div class="glass-panel stat-card p-4 flex items-center justify-between">
-                        <div class="flex items-center space-x-4">
-                            <div class="p-2.5 bg-slate-800 rounded-lg border border-slate-700 text-slate-300">
-                                <i data-lucide="${srv.icon}" class="w-5 h-5"></i>
-                            </div>
-                            <div>
-                                <h3 class="text-sm font-semibold text-white">${srv.name}</h3>
-                                <p class="text-xs text-slate-400 mt-0.5">${srv.details}</p>
-                            </div>
+                    <div class="service-card">
+                        <div class="service-icon" style="background:${c.bg}; color:${c.text}">
+                            <i data-lucide="${srv.icon}"></i>
                         </div>
-                        <div class="flex flex-col items-end">
-                            <span class="flex items-center text-xs font-medium uppercase tracking-wider ${color}">
-                                <span class="w-2 h-2 rounded-full ${dotColor} mr-1.5 ${isHealthy ? 'status-pulse' : ''}"></span>
-                                ${srv.status}
-                            </span>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-            lucide.createIcons();
-        }
-
-        function renderKPIs(overview) {
-            const grid = document.getElementById('kpi-grid');
-            if (!overview) return;
-
-            const kpis = [
-                { label: 'Queued', value: overview.queued, icon: 'list', color: 'text-amber-400' },
-                { label: 'Processing', value: overview.processing, icon: 'loader', color: 'text-blue-400' },
-                { label: 'Completed', value: overview.completed, icon: 'check-circle-2', color: 'text-emerald-400' },
-                { label: 'Failed', value: overview.failed, icon: 'alert-circle', color: 'text-rose-400' },
-                { label: 'Success Rate', value: overview.success_rate + '%', icon: 'activity', color: 'text-indigo-400' },
-            ];
-
-            grid.innerHTML = kpis.map(kpi => `
-                <div class="glass-panel stat-card p-4 relative overflow-hidden">
-                    <div class="absolute top-0 right-0 p-4 opacity-10">
-                        <i data-lucide="${kpi.icon}" class="w-12 h-12 ${kpi.color}"></i>
-                    </div>
-                    <p class="text-xs font-medium text-slate-400 uppercase tracking-wider mb-1">${kpi.label}</p>
-                    <h3 class="text-2xl font-bold text-white">${kpi.value}</h3>
-                </div>
-            `).join('');
-            lucide.createIcons();
-            
-            document.getElementById('total-docs-badge').textContent = `Total: ${overview.total_documents}`;
-        }
-
-        function renderConfig(config) {
-            const list = document.getElementById('config-list');
-            if (!config) return;
-            
-            const items = Object.entries(config).map(([key, value]) => {
-                const label = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                return `
-                    <li class="flex items-start">
-                        <div class="w-2 h-2 rounded-full bg-slate-600 mt-1.5 mr-3 flex-shrink-0"></div>
                         <div>
-                            <p class="text-xs font-medium text-slate-400">${label}</p>
-                            <p class="text-sm text-slate-200 font-mono break-all">${value}</p>
+                            <div class="service-name">${srv.name}</div>
+                            <div class="service-detail">${srv.details}</div>
                         </div>
-                    </li>
-                `;
+                        <div class="service-status" style="color:${c.text}">
+                            <span class="status-dot ${isOk ? 'pulse' : ''}" style="background:${c.dot}"></span>
+                            ${srv.status}
+                        </div>
+                    </div>`;
             }).join('');
-            list.innerHTML = items;
+            lucide.createIcons();
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Overview — KPIs
+        // ═══════════════════════════════════════════════════════════════════
+        function renderKPIs(ov) {
+            if (!ov) return;
+            const kpis = [
+                { label: 'Queued', value: ov.queued, color: 'var(--amber)', icon: 'list' },
+                { label: 'Processing', value: ov.processing, color: 'var(--blue)', icon: 'loader' },
+                { label: 'Completed', value: ov.completed, color: 'var(--green)', icon: 'check-circle-2' },
+                { label: 'Failed', value: ov.failed, color: 'var(--red)', icon: 'alert-circle' },
+                { label: 'Success Rate', value: ov.success_rate + '%', color: 'var(--cyan)', icon: 'activity' },
+            ];
+            document.getElementById('kpi-grid').innerHTML = kpis.map(k => `
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="color: ${k.color}"><i data-lucide="${k.icon}"></i></div>
+                    <div class="kpi-label">${k.label}</div>
+                    <div class="kpi-value" style="color: ${k.color}">${k.value}</div>
+                </div>`).join('');
+            document.getElementById('total-docs-badge').textContent = `Total: ${ov.total_documents}`;
+            lucide.createIcons();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Overview — Recent Docs
+        // ═══════════════════════════════════════════════════════════════════
         function renderRecentDocs(docs) {
             const tbody = document.getElementById('docs-table-body');
-            if (!docs) return;
-
-            if (docs.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="px-5 py-8 text-center text-slate-500">No documents found.</td></tr>`;
+            if (!docs || !docs.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:40px;color:var(--text-dim)">No documents found.</td></tr>';
                 return;
             }
-
-            tbody.innerHTML = docs.map(doc => {
-                const statusClass = getStatusColor(doc.status);
-                return `
-                    <tr class="hover:bg-slate-800/30 transition-colors">
-                        <td class="px-5 py-3 font-mono text-xs text-slate-300 align-middle">
-                            ${doc.doc_key.substring(0,8)}...
-                        </td>
-                        <td class="px-5 py-3 align-middle">
-                            <div class="text-sm font-medium text-slate-200">${doc.original_filename || 'Unknown'}</div>
-                            <div class="text-xs text-slate-500">${formatBytes(doc.file_size)}</div>
-                            ${doc.error_message ? `<div class="text-xs text-rose-400 mt-0.5 truncate max-w-xs" title="${doc.error_message}">${doc.error_message}</div>` : ''}
-                        </td>
-                        <td class="px-5 py-3 align-middle">
-                            <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${statusClass}">
-                                ${doc.status}
-                                ${doc.retry_count > 0 ? `<span class="ml-1 opacity-70">(R${doc.retry_count})</span>` : ''}
-                            </span>
-                        </td>
-                        <td class="px-5 py-3 align-middle text-sm text-slate-300 uppercase">
-                            ${doc.document_type}
-                        </td>
-                        <td class="px-5 py-3 align-middle text-right text-xs text-slate-400 font-mono">
-                            ${formatTime(doc.updated_at || doc.created_at)}
-                        </td>
-                    </tr>
-                `;
-            }).join('');
+            tbody.innerHTML = docs.map(d => `
+                <tr>
+                    <td class="mono" style="color:var(--cyan)">${d.doc_key.substring(0,10)}…</td>
+                    <td>
+                        <div style="font-weight:500;color:var(--text-primary);font-size:13px">${d.original_filename || 'Unknown'}</div>
+                        <div style="font-size:11px;color:var(--text-dim)">${fmtBytes(d.file_size)}</div>
+                        ${d.error_message ? `<div style="font-size:11px;color:var(--red);margin-top:2px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${d.error_message}">${d.error_message}</div>` : ''}
+                    </td>
+                    <td><span class="badge ${statusBadgeClass(d.status)}"><span class="badge-dot"></span>${d.status}${d.retry_count > 0 ? ` (R${d.retry_count})` : ''}</span></td>
+                    <td style="text-transform:uppercase;font-size:12px">${d.document_type}</td>
+                    <td style="text-align:right" class="mono">${fmtTime(d.updated_at || d.created_at)}</td>
+                </tr>`).join('');
         }
 
-        function initChart() {
-            const ctx = document.getElementById('throughputChart').getContext('2d');
-            
-            // Global defaults for dark theme
-            Chart.defaults.color = '#94a3b8';
-            Chart.defaults.borderColor = '#334155';
-            
-            throughputChart = new Chart(ctx, {
+        // ═══════════════════════════════════════════════════════════════════
+        //  CHARTS
+        // ═══════════════════════════════════════════════════════════════════
+        function getOrCreateChart(id, config) {
+            if (chartInstances[id]) {
+                return chartInstances[id];
+            }
+            const ctx = document.getElementById(id);
+            if (!ctx) return null;
+            chartInstances[id] = new Chart(ctx.getContext('2d'), config);
+            return chartInstances[id];
+        }
+
+        function initOverviewChart() {
+            getOrCreateChart('throughputChartOverview', {
                 type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'Completed',
-                            data: [],
-                            borderColor: '#34d399', // emerald-400
-                            backgroundColor: 'rgba(52, 211, 153, 0.1)',
-                            borderWidth: 2,
-                            tension: 0.4,
-                            fill: true,
-                            pointRadius: 0,
-                            pointHoverRadius: 4
-                        },
-                        {
-                            label: 'Queued',
-                            data: [],
-                            borderColor: '#fbbf24', // amber-400
-                            borderWidth: 2,
-                            borderDash: [5, 5],
-                            tension: 0.4,
-                            pointRadius: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            align: 'end',
-                            labels: { boxWidth: 12, usePointStyle: true, pointStyle: 'circle' }
-                        },
-                        tooltip: {
-                            backgroundColor: '#1e293b',
-                            titleColor: '#f8fafc',
-                            bodyColor: '#cbd5e1',
-                            borderColor: '#334155',
-                            borderWidth: 1,
-                            padding: 10
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            grid: { color: '#334155', drawBorder: false },
-                            ticks: { precision: 0 }
-                        },
-                        x: {
-                            grid: { display: false, drawBorder: false }
-                        }
-                    }
-                }
+                data: { labels: [], datasets: [
+                    { label: 'Completed', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0, pointHoverRadius: 4 },
+                    { label: 'Failed', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0, pointHoverRadius: 4 },
+                    { label: 'Queued', data: [], borderColor: '#fbbf24', borderWidth: 1.5, borderDash: [4,4], tension: 0.4, pointRadius: 0 },
+                ]},
+                options: chartLineOpts()
             });
         }
 
-        function updateChart(timeline) {
-            if (!throughputChart || !timeline) return;
-            
-            throughputChart.data.labels = timeline.map(t => t.hour);
-            throughputChart.data.datasets[0].data = timeline.map(t => t.completed);
-            throughputChart.data.datasets[1].data = timeline.map(t => t.queued);
-            throughputChart.update('none'); // Update without full animation for smoother polling
+        function initGrafanaCharts() {
+            getOrCreateChart('mainThroughputChart', {
+                type: 'line',
+                data: { labels: [], datasets: [
+                    { label: 'Completed', data: [], borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 1, pointHoverRadius: 5 },
+                    { label: 'Failed', data: [], borderColor: '#f87171', backgroundColor: 'rgba(248,113,113,0.08)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 1, pointHoverRadius: 5 },
+                    { label: 'Queued', data: [], borderColor: '#fbbf24', backgroundColor: 'rgba(251,191,36,0.05)', borderWidth: 2, tension: 0.4, fill: true, pointRadius: 0 },
+                ]},
+                options: chartLineOpts()
+            });
+
+            getOrCreateChart('statusChartGrafana', {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, usePointStyle: true, pointStyle: 'circle', padding: 12, font: { size: 11 } } } } }
+            });
+
+            getOrCreateChart('typeChartGrafana', {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: ['#22d3ee','#a78bfa','#f472b6','#fb923c','#34d399'], borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { position: 'right', labels: { boxWidth: 10, usePointStyle: true, pointStyle: 'circle', padding: 12, font: { size: 11 } } } } }
+            });
+
+            getOrCreateChart('statusDoughnutChart', {
+                type: 'doughnut',
+                data: { labels: [], datasets: [{ data: [], backgroundColor: [], borderWidth: 0 }] },
+                options: { responsive: true, maintainAspectRatio: false, cutout: '70%', plugins: { legend: { display: false } } }
+            });
         }
 
-        // Main Loop
+        function chartLineOpts() {
+            return {
+                responsive: true, maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                plugins: {
+                    legend: { position: 'top', align: 'end', labels: { boxWidth: 10, usePointStyle: true, pointStyle: 'circle', padding: 14, font: { size: 11 } } },
+                    tooltip: { backgroundColor: '#111827', titleColor: '#f1f5f9', bodyColor: '#94a3b8', borderColor: '#2a3a4e', borderWidth: 1, padding: 12, cornerRadius: 8 }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: '#1e293b', drawBorder: false }, ticks: { precision: 0, font: { size: 10 } } },
+                    x: { grid: { display: false }, ticks: { font: { size: 10 } } }
+                }
+            };
+        }
+
+        function updateTimeline(timeline, chartId) {
+            const chart = chartInstances[chartId];
+            if (!chart || !timeline) return;
+            chart.data.labels = timeline.map(t => t.hour);
+            chart.data.datasets[0].data = timeline.map(t => t.completed);
+            chart.data.datasets[1].data = timeline.map(t => t.failed);
+            if (chart.data.datasets[2]) chart.data.datasets[2].data = timeline.map(t => t.queued);
+            chart.update('none');
+        }
+
+        const statusColors = {
+            COMPLETED: '#34d399', PROCESSING: '#60a5fa', QUEUED: '#fbbf24',
+            FAILED: '#f87171', FAILED_PERMANENTLY: '#f472b6', RETRYING: '#fb923c',
+            UPLOADED: '#a78bfa'
+        };
+
+        function updateStatusChart(data, chartId) {
+            const chart = chartInstances[chartId];
+            if (!chart || !data) return;
+            const labels = Object.keys(data);
+            const values = Object.values(data);
+            const colors = labels.map(l => statusColors[l] || '#64748b');
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = values;
+            chart.data.datasets[0].backgroundColor = colors;
+            chart.update('none');
+        }
+
+        function updateTypeChart(data, chartId) {
+            const chart = chartInstances[chartId];
+            if (!chart || !data) return;
+            chart.data.labels = Object.keys(data).map(k => k.toUpperCase());
+            chart.data.datasets[0].data = Object.values(data);
+            chart.update('none');
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Metrics (Prometheus)
+        // ═══════════════════════════════════════════════════════════════════
+        function updateGauge(containerId, pct, label) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            const circumference = 263.9;
+            const offset = circumference - (circumference * Math.min(pct, 100) / 100);
+            el.querySelector('.fg').style.strokeDashoffset = offset;
+            el.querySelector('.gauge-value').textContent = typeof label !== 'undefined' ? label : Math.round(pct) + '%';
+        }
+
+        function renderMetrics(metrics, overview) {
+            if (!metrics) return;
+
+            // Gauges
+            const memPct = metrics.memory?.used_pct || 0;
+            const diskPct = metrics.disk?.used_pct || 0;
+            const successRate = overview?.success_rate || 0;
+            updateGauge('gauge-memory', memPct);
+            updateGauge('gauge-disk', diskPct);
+            updateGauge('gauge-success', successRate);
+            updateGauge('gauge-cpu', (metrics.cpu_count / 16) * 100, metrics.cpu_count + ' cores');
+
+            // KPIs
+            const kpis = [
+                { label: 'Uptime', value: metrics.uptime_formatted, color: 'var(--green)', icon: 'clock' },
+                { label: 'Python', value: metrics.python_version, color: 'var(--cyan)', icon: 'code' },
+                { label: 'Platform', value: metrics.platform, color: 'var(--violet)', icon: 'monitor' },
+                { label: 'Memory', value: (metrics.memory?.rss_mb || 0) + ' MB', color: 'var(--orange)', icon: 'hard-drive' },
+            ];
+            document.getElementById('metrics-kpi-grid').innerHTML = kpis.map(k => `
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="color:${k.color}"><i data-lucide="${k.icon}"></i></div>
+                    <div class="kpi-label">${k.label}</div>
+                    <div class="kpi-value" style="color:${k.color};font-size:18px">${k.value}</div>
+                </div>`).join('');
+
+            // GC Table
+            const gcBody = document.getElementById('gc-table-body');
+            if (metrics.gc_stats && metrics.gc_stats.length) {
+                gcBody.innerHTML = metrics.gc_stats.map((g, i) => `
+                    <tr>
+                        <td class="mono">Gen ${i}</td>
+                        <td class="mono">${g.collections || 0}</td>
+                        <td class="mono">${g.collected || 0}</td>
+                        <td class="mono">${g.uncollectable || 0}</td>
+                    </tr>`).join('');
+            }
+            lucide.createIcons();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Logs (Loki)
+        // ═══════════════════════════════════════════════════════════════════
+        let logSearchTerm = '';
+        document.getElementById('log-search').addEventListener('input', (e) => {
+            logSearchTerm = e.target.value.toLowerCase();
+        });
+
+        function setLogFilter(level) {
+            logFilter = level;
+            document.querySelectorAll('.log-filter-btn[data-level]').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.log-filter-btn[data-level="${level}"]`)?.classList.add('active');
+        }
+
+        function toggleAutoScroll() {
+            logAutoScroll = !logAutoScroll;
+            const btn = document.getElementById('log-autoscroll-btn');
+            btn.style.color = logAutoScroll ? 'var(--green)' : 'var(--text-dim)';
+        }
+
+        function renderLogs(logs) {
+            const terminal = document.getElementById('log-terminal');
+            if (!logs) return;
+
+            let filtered = logs;
+            if (logFilter !== 'ALL') filtered = filtered.filter(l => l.level === logFilter);
+            if (logSearchTerm) filtered = filtered.filter(l => l.message.toLowerCase().includes(logSearchTerm));
+
+            terminal.innerHTML = filtered.map(l => `
+                <div class="log-line">
+                    <span class="log-ts">${l.timestamp}</span>
+                    <span class="log-lvl ${l.level}">${l.level}</span>
+                    <span class="log-msg">${escapeHtml(l.message)}</span>
+                </div>`).join('');
+
+            if (logAutoScroll) terminal.scrollTop = terminal.scrollHeight;
+        }
+
+        function escapeHtml(str) {
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Traces (Tempo/Jaeger)
+        // ═══════════════════════════════════════════════════════════════════
+        const spanColors = {
+            'API Server': '#22d3ee', 'Kafka Broker': '#a78bfa',
+            'Document Worker': '#f472b6', 'Document Storage': '#34d399',
+        };
+
+        function renderTraces(traces) {
+            if (!traces) return;
+            const list = document.getElementById('trace-list');
+
+            // Stats
+            const totalTraces = traces.length;
+            const avgDuration = traces.length ? Math.round(traces.reduce((s, t) => s + t.total_duration_ms, 0) / traces.length) : 0;
+            const errTraces = traces.filter(t => t.status === 'FAILED' || t.status === 'FAILED_PERMANENTLY').length;
+            const okTraces = totalTraces - errTraces;
+
+            document.getElementById('trace-stats-grid').innerHTML = [
+                { label: 'Total Traces', value: totalTraces, color: 'var(--cyan)', icon: 'git-branch' },
+                { label: 'Avg Duration', value: fmtMs(avgDuration), color: 'var(--violet)', icon: 'clock' },
+                { label: 'Successful', value: okTraces, color: 'var(--green)', icon: 'check-circle-2' },
+                { label: 'Errored', value: errTraces, color: 'var(--red)', icon: 'x-circle' },
+            ].map(k => `
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="color:${k.color}"><i data-lucide="${k.icon}"></i></div>
+                    <div class="kpi-label">${k.label}</div>
+                    <div class="kpi-value" style="color:${k.color};font-size:20px">${k.value}</div>
+                </div>`).join('');
+
+            if (!traces.length) {
+                list.innerHTML = '<div class="empty-state"><i data-lucide="git-branch"></i><p>No traces available</p></div>';
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = traces.map((t, idx) => {
+                const isErr = t.status === 'FAILED' || t.status === 'FAILED_PERMANENTLY';
+                const maxMs = Math.max(t.total_duration_ms, 1);
+                const spansHtml = t.spans.map(sp => {
+                    const left = (sp.start_ms / maxMs) * 100;
+                    const width = Math.max((sp.duration_ms / maxMs) * 100, 2);
+                    const color = spanColors[sp.service] || '#64748b';
+                    return `
+                        <div class="span-row">
+                            <div class="span-service">${sp.service}</div>
+                            <div class="span-bar-container">
+                                <div class="span-bar" style="left:${left}%;width:${width}%;background:${color}${sp.status==='error'?'':'cc'}">${sp.name}</div>
+                            </div>
+                            <div class="span-duration">${fmtMs(sp.duration_ms)}</div>
+                        </div>`;
+                }).join('');
+
+                return `
+                    <div class="trace-item" id="trace-${idx}">
+                        <div class="trace-header" onclick="document.getElementById('trace-${idx}').classList.toggle('expanded')">
+                            <div class="trace-header-left">
+                                <span class="badge ${isErr ? 'badge-red' : 'badge-green'}"><span class="badge-dot"></span>${t.status}</span>
+                                <span class="trace-id">${t.trace_id}</span>
+                                <span class="trace-filename">${t.filename}</span>
+                            </div>
+                            <div style="display:flex;align-items:center;gap:12px">
+                                <span class="badge badge-cyan">${t.span_count} spans</span>
+                                <span class="trace-duration">${fmtMs(t.total_duration_ms)}</span>
+                            </div>
+                        </div>
+                        <div class="trace-spans-container">${spansHtml}</div>
+                    </div>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Service Map (OpenTelemetry)
+        // ═══════════════════════════════════════════════════════════════════
+        let serviceMapData = null;
+
+        function drawServiceMap() {
+            const canvas = document.getElementById('serviceMapCanvas');
+            if (!canvas || !serviceMapData) return;
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.scale(dpr, dpr);
+            const W = rect.width, H = rect.height;
+
+            ctx.clearRect(0, 0, W, H);
+
+            // Nodes
+            const nodes = [
+                { id: 'api', label: 'API Server', x: W * 0.12, y: H * 0.5, icon: '⚡', color: '#22d3ee' },
+                { id: 'kafka', label: 'Kafka Broker', x: W * 0.35, y: H * 0.3, icon: '📨', color: '#a78bfa' },
+                { id: 'worker', label: 'Doc Worker', x: W * 0.58, y: H * 0.5, icon: '⚙️', color: '#f472b6' },
+                { id: 'storage', label: 'Storage', x: W * 0.82, y: H * 0.3, icon: '💾', color: '#34d399' },
+                { id: 'db', label: 'Database', x: W * 0.82, y: H * 0.7, icon: '🗄️', color: '#60a5fa' },
+            ];
+
+            const edges = [
+                { from: 'api', to: 'kafka', label: 'produce' },
+                { from: 'kafka', to: 'worker', label: 'consume' },
+                { from: 'worker', to: 'storage', label: 'write' },
+                { from: 'worker', to: 'db', label: 'update' },
+                { from: 'api', to: 'db', label: 'query' },
+            ];
+
+            // Map service data to nodes
+            const srvMap = {};
+            if (serviceMapData) {
+                serviceMapData.forEach(s => {
+                    if (s.name === 'API Server') srvMap['api'] = s;
+                    if (s.name === 'Database') srvMap['db'] = s;
+                    if (s.name === 'Kafka Broker') srvMap['kafka'] = s;
+                    if (s.name === 'Document Storage') srvMap['storage'] = s;
+                    if (s.name === 'Document Workers') srvMap['worker'] = s;
+                });
+            }
+
+            const time = Date.now() / 1000;
+
+            // Draw edges with animated particles
+            edges.forEach(e => {
+                const from = nodes.find(n => n.id === e.from);
+                const to = nodes.find(n => n.id === e.to);
+                if (!from || !to) return;
+
+                // Line
+                ctx.beginPath();
+                ctx.moveTo(from.x, from.y);
+                ctx.lineTo(to.x, to.y);
+                ctx.strokeStyle = 'rgba(42, 58, 78, 0.6)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // Animated particle
+                const progress = ((time * 0.3) % 1 + Math.random() * 0.001) % 1;
+                const px = from.x + (to.x - from.x) * progress;
+                const py = from.y + (to.y - from.y) * progress;
+
+                ctx.beginPath();
+                ctx.arc(px, py, 3, 0, Math.PI * 2);
+                ctx.fillStyle = from.color;
+                ctx.fill();
+
+                // Edge label
+                const mx = (from.x + to.x) / 2;
+                const my = (from.y + to.y) / 2 - 8;
+                ctx.font = '10px Inter';
+                ctx.fillStyle = '#475569';
+                ctx.textAlign = 'center';
+                ctx.fillText(e.label, mx, my);
+            });
+
+            // Draw nodes
+            nodes.forEach(n => {
+                const srv = srvMap[n.id];
+                const isHealthy = srv && (srv.status === 'healthy' || srv.status === 'idle');
+
+                // Glow
+                if (isHealthy) {
+                    const glow = ctx.createRadialGradient(n.x, n.y, 20, n.x, n.y, 50);
+                    glow.addColorStop(0, n.color + '15');
+                    glow.addColorStop(1, 'transparent');
+                    ctx.fillStyle = glow;
+                    ctx.fillRect(n.x - 50, n.y - 50, 100, 100);
+                }
+
+                // Circle bg
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, 28, 0, Math.PI * 2);
+                ctx.fillStyle = '#111827';
+                ctx.fill();
+                ctx.strokeStyle = isHealthy ? n.color + '60' : '#f8717160';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Icon
+                ctx.font = '22px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(n.icon, n.x, n.y);
+
+                // Label
+                ctx.font = '600 11px Inter';
+                ctx.fillStyle = '#e2e8f0';
+                ctx.textAlign = 'center';
+                ctx.fillText(n.label, n.x, n.y + 44);
+
+                // Status dot
+                ctx.beginPath();
+                ctx.arc(n.x + 20, n.y - 20, 5, 0, Math.PI * 2);
+                ctx.fillStyle = isHealthy ? '#34d399' : (srv?.status === 'warning' ? '#fbbf24' : '#f87171');
+                ctx.fill();
+            });
+
+            serviceMapAnimFrame = requestAnimationFrame(() => drawServiceMap());
+        }
+
+        function renderServiceDetails(services) {
+            if (!services) return;
+            const grid = document.getElementById('service-detail-grid');
+            grid.innerHTML = services.map(srv => {
+                const c = serviceStatusColor(srv.status);
+                return `
+                    <div class="card">
+                        <div class="card-body" style="display:flex;align-items:center;gap:14px;">
+                            <div class="service-icon" style="background:${c.bg};color:${c.text}">
+                                <i data-lucide="${srv.icon}"></i>
+                            </div>
+                            <div style="flex:1">
+                                <div class="service-name">${srv.name}</div>
+                                <div class="service-detail">${srv.details}</div>
+                            </div>
+                            <span class="badge badge-${srv.status === 'healthy' || srv.status === 'idle' ? 'green' : srv.status === 'warning' ? 'amber' : 'red'}">
+                                <span class="badge-dot"></span>${srv.status}
+                            </span>
+                        </div>
+                    </div>`;
+            }).join('');
+            lucide.createIcons();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Alerts (Alertmanager)
+        // ═══════════════════════════════════════════════════════════════════
+        function renderAlerts(alertData) {
+            if (!alertData) return;
+            const { alerts, rules, total_firing } = alertData;
+
+            // Badge
+            const badge = document.getElementById('alert-badge');
+            if (total_firing > 0) {
+                badge.style.display = 'block';
+            } else {
+                badge.style.display = 'none';
+            }
+
+            // Stats
+            const critCount = alerts.filter(a => a.severity === 'critical').length;
+            const warnCount = alerts.filter(a => a.severity === 'warning').length;
+            document.getElementById('alert-stats-grid').innerHTML = [
+                { label: 'Firing', value: total_firing, color: 'var(--red)', icon: 'flame' },
+                { label: 'Critical', value: critCount, color: 'var(--pink)', icon: 'alert-octagon' },
+                { label: 'Warning', value: warnCount, color: 'var(--amber)', icon: 'alert-triangle' },
+            ].map(k => `
+                <div class="kpi-card">
+                    <div class="kpi-icon" style="color:${k.color}"><i data-lucide="${k.icon}"></i></div>
+                    <div class="kpi-label">${k.label}</div>
+                    <div class="kpi-value" style="color:${k.color};font-size:24px">${k.value}</div>
+                </div>`).join('');
+
+            // Badge count
+            document.getElementById('firing-count-badge').textContent = `${total_firing} firing`;
+
+            // Alerts list
+            const container = document.getElementById('alerts-container');
+            const emptyEl = document.getElementById('alerts-empty');
+            if (alerts.length === 0) {
+                container.innerHTML = '<div class="empty-state" id="alerts-empty"><i data-lucide="shield-check"></i><p>All systems operational — no alerts firing</p></div>';
+                lucide.createIcons();
+                return;
+            }
+
+            container.innerHTML = alerts.filter(a => !acknowledgedAlerts.has(a.id)).map(a => `
+                <div class="alert-item ${a.severity}">
+                    <div class="alert-severity-icon ${a.severity}">
+                        <i data-lucide="${a.severity === 'critical' ? 'alert-octagon' : 'alert-triangle'}"></i>
+                    </div>
+                    <div class="alert-info">
+                        <div class="alert-title">${a.title}</div>
+                        <div class="alert-message">${a.message}</div>
+                        <div class="alert-meta">
+                            <span><i data-lucide="server"></i>${a.service}</span>
+                            <span><i data-lucide="code"></i>${a.rule}</span>
+                            <span><i data-lucide="clock"></i>${fmtTime(a.fired_at)}</span>
+                        </div>
+                    </div>
+                    <div class="alert-actions">
+                        <button class="alert-btn ack" onclick="acknowledgeAlert('${a.id}')">Silence</button>
+                    </div>
+                </div>`).join('');
+
+            // Rules
+            document.getElementById('rules-grid').innerHTML = rules.map(r => `
+                <div class="rule-item">
+                    <div class="rule-name">${r.name}</div>
+                    <span class="rule-expr">${r.expr}</span>
+                    <div class="rule-meta">Severity: ${r.severity} · For: ${r.for}</div>
+                </div>`).join('');
+
+            lucide.createIcons();
+        }
+
+        function acknowledgeAlert(id) {
+            acknowledgedAlerts.add(id);
+            updateDashboard();
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  RENDER: Config
+        // ═══════════════════════════════════════════════════════════════════
+        function renderConfig(config) {
+            if (!config) return;
+            document.getElementById('config-table-body').innerHTML = Object.entries(config).map(([k, v]) => `
+                <tr>
+                    <td style="color:var(--text-secondary);font-weight:500">${k.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</td>
+                    <td class="mono" style="color:var(--cyan)">${v}</td>
+                </tr>`).join('');
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  TIME RANGE SELECTOR
+        // ═══════════════════════════════════════════════════════════════════
+        async function changeTimeRange(hours) {
+            currentTimeRange = hours;
+            document.querySelectorAll('.time-range-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`.time-range-btn[data-hours="${hours}"]`)?.classList.add('active');
+            const timeline = await fetchAPI(`documents/timeline?hours=${hours}`);
+            updateTimeline(timeline, 'mainThroughputChart');
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        //  MAIN UPDATE LOOP
+        // ═══════════════════════════════════════════════════════════════════
         async function updateDashboard() {
-            const [overview, services, config, recent, timeline] = await Promise.all([
+            const [overview, services, config, recent, timeline, metrics, logs, traces, alertData, statusDist, typeDist] = await Promise.all([
                 fetchAPI('overview'),
                 fetchAPI('services'),
                 fetchAPI('config'),
-                fetchAPI('documents/recent?limit=10'),
-                fetchAPI('documents/timeline?hours=12')
+                fetchAPI('documents/recent?limit=15'),
+                fetchAPI(`documents/timeline?hours=12`),
+                fetchAPI('metrics'),
+                fetchAPI('logs?limit=200'),
+                fetchAPI('traces?limit=20'),
+                fetchAPI('alerts'),
+                fetchAPI('documents/by-status'),
+                fetchAPI('documents/by-type'),
             ]);
 
+            // Header
+            document.getElementById('hdr-updated').textContent = new Date().toLocaleTimeString([], { hour12: false });
+            if (metrics) document.getElementById('hdr-uptime').textContent = metrics.uptime_formatted;
+
+            // Overview panel
             renderServices(services);
             renderKPIs(overview);
-            renderConfig(config);
             renderRecentDocs(recent);
-            updateChart(timeline);
+            updateTimeline(timeline, 'throughputChartOverview');
+            updateStatusChart(statusDist, 'statusDoughnutChart');
 
-            document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+            // Grafana panel
+            updateTimeline(timeline, 'mainThroughputChart');
+            updateStatusChart(statusDist, 'statusChartGrafana');
+            updateTypeChart(typeDist, 'typeChartGrafana');
+
+            // Metrics panel
+            renderMetrics(metrics, overview);
+
+            // Logs panel
+            renderLogs(logs);
+
+            // Traces panel
+            renderTraces(traces);
+
+            // Service Map panel
+            serviceMapData = services;
+            renderServiceDetails(services);
+
+            // Alerts panel
+            renderAlerts(alertData);
+
+            // Config panel
+            renderConfig(config);
         }
 
-        // Boot
+        // ═══════════════════════════════════════════════════════════════════
+        //  BOOT
+        // ═══════════════════════════════════════════════════════════════════
         document.addEventListener('DOMContentLoaded', () => {
-            initChart();
+            initOverviewChart();
+            initGrafanaCharts();
             updateDashboard();
-            
+            drawServiceMap();
+
             // Heartbeat every 3 seconds
             setInterval(updateDashboard, 3000);
         });
