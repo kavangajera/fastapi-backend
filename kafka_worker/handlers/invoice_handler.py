@@ -1,46 +1,48 @@
 """
 kafka_worker/handlers/invoice_handler.py
 ────────────────────────────────────────
-Invoice processing: PDF → LLM extraction → persisted invoice.
+Extraction-only invoice handler.
 
-Reuses the existing service layer:
-    services.invoice_service.extract_invoice_from_pdf / store_invoice
+Reads the uploaded PDF, runs `services.invoice_service.extract_invoice_from_pdf`
+in a thread, and returns the parsed `pydantic.model_dump()` dict. The
+worker stashes this dict on `Document.result_data` and publishes it
+through the result bus. Persistence into `invoices` / `invoice_line_items`
+/ `invoice_summaries` is the responsibility of `POST /invoices` (route).
 """
 
 from __future__ import annotations
 
+import asyncio
+
 from loguru import logger
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.document import Document
 from services.document_storage import document_storage
-from services.invoice_service import (
-    count_pdf_pages,
-    extract_invoice_from_pdf,
-    store_invoice,
-)
+from services.invoice_service import count_pdf_pages, extract_invoice_from_pdf
 
 
-def handle_invoice(db: Session, doc: Document) -> dict:
-    """Extract and store an invoice from the uploaded PDF."""
+async def handle_invoice(
+    session: AsyncSession,
+    doc: Document,
+    *,
+    medical_store_id: int,
+) -> dict:
     file_bytes = document_storage.retrieve(doc.storage_path)
     filename = doc.original_filename or f"{doc.doc_key}.pdf"
 
-    page_count = count_pdf_pages(file_bytes)
+    page_count = await asyncio.to_thread(count_pdf_pages, file_bytes)
     logger.info(
-        "Invoice processing: doc_key={doc_key} file={filename} pages={pages}",
-        doc_key=doc.doc_key,
-        filename=filename,
-        pages=page_count,
+        "Invoice extract: doc_key={dk} file={f} pages={p}",
+        dk=doc.doc_key,
+        f=filename,
+        p=page_count,
     )
 
-    invoice_payload = extract_invoice_from_pdf(file_bytes, filename)
-    db_invoice = store_invoice(db, invoice_payload, filename, page_count)
-    db.commit()
-
-    return {
-        "invoice_id": db_invoice.id,
-        "line_items_created": len(invoice_payload.line_items),
-        "page_count": page_count,
-        "filename": filename,
-    }
+    invoice_payload = await asyncio.to_thread(extract_invoice_from_pdf, file_bytes, filename)
+    payload_dict = invoice_payload.model_dump()
+    payload_dict["medical_store_id"] = medical_store_id
+    payload_dict["source_filename"] = filename
+    payload_dict["page_count"] = page_count
+    payload_dict["document_id"] = doc.id
+    return payload_dict

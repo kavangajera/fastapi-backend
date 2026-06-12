@@ -21,8 +21,8 @@ from __future__ import annotations
 from core.config import settings
 from core.enums import ProcessType
 
-
 # ── Topic-name derivation ────────────────────────────────────────────────────
+
 
 def main_topic(process_type: ProcessType | str) -> str:
     return f"{ProcessType(process_type).value}-processing"
@@ -41,6 +41,7 @@ def results_topic() -> str:
 
 
 # ── Consumer-group derivation ────────────────────────────────────────────────
+
 
 def worker_group(process_type: ProcessType | str) -> str:
     return f"{ProcessType(process_type).value}-workers"

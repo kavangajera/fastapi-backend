@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class PharmacyUpdateInput(BaseModel):
@@ -10,12 +9,12 @@ class PharmacyUpdateInput(BaseModel):
     Pass the pharmacy ID as a path parameter (``ph_id``).
     """
 
-    pharmacy_title: Optional[str] = Field(
+    pharmacy_title: str | None = Field(
         None,
         description="New name / title for the pharmacy. Omit to keep the current value.",
         examples=["Deva's Health Hub"],
     )
-    pharmacy_location: Optional[str] = Field(
+    pharmacy_location: str | None = Field(
         None,
         description="New street address. Omit to keep the current value.",
         examples=["456 Wellness Ave, Pune"],

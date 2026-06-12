@@ -28,40 +28,42 @@ import os
 import sys
 from io import BytesIO
 from pathlib import Path
-from typing import List, Optional
 
 import fitz
-from PIL import Image
-from pydantic import BaseModel, Field, field_validator
-from loguru import logger
+from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import HumanMessage, SystemMessage
-
+from loguru import logger
+from PIL import Image
+from pydantic import BaseModel, Field, field_validator
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Schema
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class LineItem(BaseModel):
-    line: Optional[str] = None
-    item_code: Optional[str] = None
-    ndc: Optional[str] = None
-    lot_number: Optional[str] = None
-    orig_order_qty: Optional[str] = None
-    order_qty: Optional[str] = None
-    invoiced_qty: Optional[str] = None
-    uom: Optional[str] = None
-    description: Optional[str] = None
-    size: Optional[str] = None
-    form: Optional[str] = None
-    unit_price: Optional[str] = None
-    extended_price: Optional[str] = None
-    awp: Optional[str] = None
-    note_code: Optional[str] = None
+    line: str | None = None
+    item_code: str | None = None
+    ndc: str | None = None
+    lot_number: str | None = None
+    orig_order_qty: str | None = None
+    order_qty: str | None = None
+    invoiced_qty: str | None = None
+    uom: str | None = None
+    description: str | None = None
+    size: str | None = None
+    form: str | None = None
+    unit_price: str | None = None
+    extended_price: str | None = None
+    awp: str | None = None
+    note_code: str | None = None
 
     @field_validator(
-        "line", "invoiced_qty", "orig_order_qty", "order_qty",
+        "line",
+        "invoiced_qty",
+        "orig_order_qty",
+        "order_qty",
         mode="before",
     )
     @classmethod
@@ -70,45 +72,45 @@ class LineItem(BaseModel):
 
 
 class Summary(BaseModel):
-    order_line_total: Optional[str] = None
-    fuel_surcharge: Optional[str] = None
-    sub_total: Optional[str] = None
-    tax: Optional[str] = None
-    grand_total: Optional[str] = None
-    total_due_by: Optional[str] = None
+    order_line_total: str | None = None
+    fuel_surcharge: str | None = None
+    sub_total: str | None = None
+    tax: str | None = None
+    grand_total: str | None = None
+    total_due_by: str | None = None
 
 
 class Invoice(BaseModel):
-    seller_name: Optional[str] = None
-    seller_address: Optional[str] = None
-    seller_phone: Optional[str] = None
-    seller_dea: Optional[str] = None
-    seller_permit: Optional[str] = None
-    seller_fed_id: Optional[str] = None
+    seller_name: str | None = None
+    seller_address: str | None = None
+    seller_phone: str | None = None
+    seller_dea: str | None = None
+    seller_permit: str | None = None
+    seller_fed_id: str | None = None
 
-    invoice_number: Optional[str] = None
-    invoice_date: Optional[str] = None
-    order_number: Optional[str] = None
-    due_date: Optional[str] = None
-    terms_of_payment: Optional[str] = None
-    your_order_number: Optional[str] = None
+    invoice_number: str | None = None
+    invoice_date: str | None = None
+    order_number: str | None = None
+    due_date: str | None = None
+    terms_of_payment: str | None = None
+    your_order_number: str | None = None
 
-    customer_number: Optional[str] = None
-    customer_name: Optional[str] = None
-    customer_dea: Optional[str] = None
-    customer_state_reg: Optional[str] = None
+    customer_number: str | None = None
+    customer_name: str | None = None
+    customer_dea: str | None = None
+    customer_state_reg: str | None = None
 
-    bill_to_name: Optional[str] = None
-    bill_to_address: Optional[str] = None
-    ship_to_name: Optional[str] = None
-    ship_to_address: Optional[str] = None
+    bill_to_name: str | None = None
+    bill_to_address: str | None = None
+    ship_to_name: str | None = None
+    ship_to_address: str | None = None
 
-    line_items: List[LineItem] = Field(default_factory=list)
+    line_items: list[LineItem] = Field(default_factory=list)
     summary: Summary = Field(default_factory=Summary)
 
-    remit_to_name: Optional[str] = None
-    remit_to_address: Optional[str] = None
-    remit_to_phone: Optional[str] = None
+    remit_to_name: str | None = None
+    remit_to_address: str | None = None
+    remit_to_phone: str | None = None
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -198,14 +200,15 @@ USER_PROMPT = (
 # Provider settings (env-driven)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def _env(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 
 def _active_provider_model(
     default_model: str,
-    provider: Optional[str] = None,
-    openrouter_model: Optional[str] = None,
+    provider: str | None = None,
+    openrouter_model: str | None = None,
 ) -> tuple[str, str]:
     resolved_provider = (provider or _env("PROVIDER", "ollama")).lower()
     if resolved_provider == "openrouter":
@@ -218,11 +221,12 @@ def _active_provider_model(
 # PDF → images
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def load_pdf_as_images(
     pdf_path: str,
     dpi_scale: float = 2.0,
     max_dim: int = 1024,
-) -> List[Image.Image]:
+) -> list[Image.Image]:
     """
     Render every PDF page as a PIL image.
     Defaults are tuned for 4B models:
@@ -236,24 +240,24 @@ def load_pdf_as_images(
     pages = []
     for idx, page in enumerate(doc):
         stored_angle = page.rotation
-        logger.debug(f"Page {idx+1}: stored rotation = {stored_angle}°")
+        logger.debug(f"Page {idx + 1}: stored rotation = {stored_angle}°")
 
         mat = fitz.Matrix(dpi_scale, dpi_scale)
         pix = page.get_pixmap(matrix=mat)
         img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-        logger.debug(f"Page {idx+1}: rendered {img.size[0]}x{img.size[1]}px")
+        logger.debug(f"Page {idx + 1}: rendered {img.size[0]}x{img.size[1]}px")
 
         # Correct stored PDF rotation
         rotation_map = {90: -90, 180: 180, 270: 90}
         if stored_angle in rotation_map:
             img = img.rotate(rotation_map[stored_angle], expand=True)
-            logger.debug(f"Page {idx+1}: corrected stored rotation {stored_angle}°")
+            logger.debug(f"Page {idx + 1}: corrected stored rotation {stored_angle}°")
 
         # Heuristic: landscape → portrait for portrait-format invoices
         w, h = img.size
         if w > h * 1.3:
             img = img.rotate(90, expand=True)
-            logger.info(f"Page {idx+1}: auto-rotated landscape→portrait")
+            logger.info(f"Page {idx + 1}: auto-rotated landscape→portrait")
 
         # Cap size for token budget
         max_side = max(img.size)
@@ -263,9 +267,9 @@ def load_pdf_as_images(
                 (int(img.size[0] * scale), int(img.size[1] * scale)),
                 Image.LANCZOS,
             )
-            logger.debug(f"Page {idx+1}: downscaled to {img.size[0]}x{img.size[1]}px")
+            logger.debug(f"Page {idx + 1}: downscaled to {img.size[0]}x{img.size[1]}px")
 
-        logger.info(f"Page {idx+1}: final size {img.size[0]}x{img.size[1]}px")
+        logger.info(f"Page {idx + 1}: final size {img.size[0]}x{img.size[1]}px")
         pages.append(img)
 
     return pages
@@ -284,6 +288,7 @@ def encode_image(img: Image.Image, quality: int = 82) -> str:
 # Single-page LLM call
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def call_llm_single_page(
     page: Image.Image,
     page_num: int,
@@ -291,10 +296,10 @@ def call_llm_single_page(
     model: str,
     ollama_url: str,
     temperature: float,
-    provider: Optional[str] = None,
-    openrouter_api_key: Optional[str] = None,
-    openrouter_base_url: Optional[str] = None,
-    openrouter_model: Optional[str] = None,
+    provider: str | None = None,
+    openrouter_api_key: str | None = None,
+    openrouter_base_url: str | None = None,
+    openrouter_model: str | None = None,
 ) -> dict:
     """
     Send ONE page image to the model and return a parsed dict.
@@ -336,8 +341,8 @@ def call_llm_single_page(
             model=model,
             base_url=ollama_url,
             temperature=temperature,
-            format="json",      # enforce JSON mode — no markdown fences
-            num_predict=4096,   # plenty for one page; keeps latency down
+            format="json",  # enforce JSON mode — no markdown fences
+            num_predict=4096,  # plenty for one page; keeps latency down
         )
 
     content = [
@@ -347,9 +352,7 @@ def call_llm_single_page(
         },
         {
             "type": "image_url",
-            "image_url": {
-                "url": f"data:image/jpeg;base64,{encode_image(page)}"
-            },
+            "image_url": {"url": f"data:image/jpeg;base64,{encode_image(page)}"},
         },
         {"type": "text", "text": USER_PROMPT},
     ]
@@ -372,16 +375,14 @@ def call_llm_single_page(
     # Empty response — model gave up (context overload, etc.)
     if not raw:
         logger.warning(
-            f"Page {page_num}: empty response from model. "
-            "Try --max-dim 800 or a larger model."
+            f"Page {page_num}: empty response from model. Try --max-dim 800 or a larger model."
         )
         return {}
 
     # Strip accidental markdown fences (format=json should prevent but just in case)
     if raw.startswith("```"):
         raw = "\n".join(
-            line for line in raw.splitlines()
-            if not line.strip().startswith("```")
+            line for line in raw.splitlines() if not line.strip().startswith("```")
         ).strip()
         logger.debug(f"Page {page_num}: stripped markdown fences")
 
@@ -401,18 +402,33 @@ def call_llm_single_page(
 # ─────────────────────────────────────────────────────────────────────────────
 
 HEADER_FIELDS = [
-    "seller_name", "seller_address", "seller_phone",
-    "seller_dea", "seller_permit", "seller_fed_id",
-    "invoice_number", "invoice_date", "order_number",
-    "due_date", "terms_of_payment", "your_order_number",
-    "customer_number", "customer_name", "customer_dea",
-    "customer_state_reg", "bill_to_name", "bill_to_address",
-    "ship_to_name", "ship_to_address",
-    "remit_to_name", "remit_to_address", "remit_to_phone",
+    "seller_name",
+    "seller_address",
+    "seller_phone",
+    "seller_dea",
+    "seller_permit",
+    "seller_fed_id",
+    "invoice_number",
+    "invoice_date",
+    "order_number",
+    "due_date",
+    "terms_of_payment",
+    "your_order_number",
+    "customer_number",
+    "customer_name",
+    "customer_dea",
+    "customer_state_reg",
+    "bill_to_name",
+    "bill_to_address",
+    "ship_to_name",
+    "ship_to_address",
+    "remit_to_name",
+    "remit_to_address",
+    "remit_to_phone",
 ]
 
 
-def merge_page_results(pages_data: List[dict]) -> dict:
+def merge_page_results(pages_data: list[dict]) -> dict:
     """
     Merge per-page dicts into one Invoice-shaped dict.
 
@@ -438,16 +454,12 @@ def merge_page_results(pages_data: List[dict]) -> dict:
         # Line items: accumulate
         items = page_data.get("line_items", [])
         if isinstance(items, list) and items:
-            logger.debug(
-                f"Page {page_num}: adding {len(items)} line item(s) to merge"
-            )
+            logger.debug(f"Page {page_num}: adding {len(items)} line item(s) to merge")
             all_line_items.extend(items)
 
         # Summary: last non-null wins
         summary = page_data.get("summary")
-        if isinstance(summary, dict) and any(
-            v is not None for v in summary.values()
-        ):
+        if isinstance(summary, dict) and any(v is not None for v in summary.values()):
             merged["summary"] = summary
             logger.debug(f"Summary updated from page {page_num}")
 
@@ -456,8 +468,7 @@ def merge_page_results(pages_data: List[dict]) -> dict:
         merged["summary"] = {}
 
     logger.info(
-        f"Merge complete: {len(all_line_items)} total line item(s) "
-        f"from {len(pages_data)} page(s)"
+        f"Merge complete: {len(all_line_items)} total line item(s) from {len(pages_data)} page(s)"
     )
     return merged
 
@@ -466,15 +477,16 @@ def merge_page_results(pages_data: List[dict]) -> dict:
 # Orchestrator: iterate pages, merge, validate
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 def call_llm(
-    pages: List[Image.Image],
+    pages: list[Image.Image],
     model: str,
     ollama_url: str,
     temperature: float,
-    provider: Optional[str] = None,
-    openrouter_api_key: Optional[str] = None,
-    openrouter_base_url: Optional[str] = None,
-    openrouter_model: Optional[str] = None,
+    provider: str | None = None,
+    openrouter_api_key: str | None = None,
+    openrouter_base_url: str | None = None,
+    openrouter_model: str | None = None,
 ) -> dict:
     """
     Send each page individually and merge results.
@@ -486,11 +498,10 @@ def call_llm(
         openrouter_model=openrouter_model,
     )
     logger.info(
-        f"Chunked extraction: {len(pages)} page(s) × 1 image/call → "
-        f"{provider}:{model_used}"
+        f"Chunked extraction: {len(pages)} page(s) × 1 image/call → {provider}:{model_used}"
     )
 
-    pages_data: List[dict] = []
+    pages_data: list[dict] = []
     for i, page in enumerate(pages, start=1):
         result = call_llm_single_page(
             page=page,
@@ -512,6 +523,7 @@ def call_llm(
 # ─────────────────────────────────────────────────────────────────────────────
 # Logging helper
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def log_invoice_summary(invoice: Invoice) -> None:
     sep = "═" * 80
@@ -538,8 +550,7 @@ def log_invoice_summary(invoice: Invoice) -> None:
     logger.info("─" * 80)
     logger.info(f"  Line Items: {len(invoice.line_items)}")
     logger.info(
-        f"  {'#':>4}  {'ITEM':12}  {'NDC':17}  "
-        f"{'QTY':>5}  {'UNIT':>9}  {'EXT':>9}  DESCRIPTION"
+        f"  {'#':>4}  {'ITEM':12}  {'NDC':17}  {'QTY':>5}  {'UNIT':>9}  {'EXT':>9}  DESCRIPTION"
     )
     logger.info("  " + "─" * 76)
     for item in invoice.line_items:
@@ -569,6 +580,7 @@ def log_invoice_summary(invoice: Invoice) -> None:
 # Public parser class
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class InvoiceParser:
     def __init__(
         self,
@@ -577,10 +589,10 @@ class InvoiceParser:
         temperature: float = 0.0,
         dpi_scale: float = 2.0,
         max_dim: int = 1024,
-        provider: Optional[str] = None,
-        openrouter_api_key: Optional[str] = None,
-        openrouter_base_url: Optional[str] = None,
-        openrouter_model: Optional[str] = None,
+        provider: str | None = None,
+        openrouter_api_key: str | None = None,
+        openrouter_base_url: str | None = None,
+        openrouter_model: str | None = None,
     ):
         self.model = model
         self.ollama_url = ollama_url
@@ -630,10 +642,7 @@ class InvoiceParser:
         logger.info("Validating against schema...")
         try:
             invoice = Invoice(**raw_dict)
-            logger.info(
-                f"Schema validation passed — "
-                f"{len(invoice.line_items)} line item(s)"
-            )
+            logger.info(f"Schema validation passed — {len(invoice.line_items)} line item(s)")
         except Exception as exc:
             logger.error(f"Schema validation failed: {exc}")
             raise

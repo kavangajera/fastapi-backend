@@ -11,7 +11,6 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -20,26 +19,24 @@ from pydantic import BaseModel, ConfigDict, Field
 # Dispense schemas
 # ---------------------------------------------------------------------------
 class DispenseBase(BaseModel):
-    qty_disp: Optional[Decimal] = None
-    qty_ord: Optional[Decimal] = None
-    days_supply: Optional[int] = None
-    date_filled: Optional[str] = None
-    rx_no: Optional[str] = None
-    ref: Optional[str] = None
-    pat_name: Optional[str] = None
-    pat_addr: Optional[str] = None
-    pat_phone: Optional[str] = None
-    pres_name: Optional[str] = None
-    pres_addr: Optional[str] = None
-    pres_phone: Optional[str] = None
-    price: Optional[Decimal] = None
-    ins_paid: Optional[Decimal] = None
-    ins_code: Optional[str] = None
+    qty_disp: Decimal | None = None
+    qty_ord: Decimal | None = None
+    days_supply: int | None = None
+    date_filled: str | None = None
+    rx_no: str | None = None
+    ref: str | None = None
+    pat_name: str | None = None
+    pat_addr: str | None = None
+    pat_phone: str | None = None
+    pres_name: str | None = None
+    pres_addr: str | None = None
+    pres_phone: str | None = None
+    price: Decimal | None = None
+    ins_paid: Decimal | None = None
+    ins_code: str | None = None
 
 
 class DispenseResponse(DispenseBase):
-    """Returned when reading a dispense from the DB."""
-
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -52,13 +49,13 @@ class DispenseResponse(DispenseBase):
 class MedicineBase(BaseModel):
     drug_name: str
     ndc: str = Field(..., min_length=11, max_length=11, description="11-digit NDC")
-    inventory_bucket: Optional[str] = None
-    lot_no_exp_date: Optional[str] = None
-    total_packs: Optional[Decimal] = None
-    total_rx_count: Optional[int] = None
-    total_ins_paid: Optional[Decimal] = None
-    total_price: Optional[Decimal] = None
-    total_cost: Optional[Decimal] = None
+    inventory_bucket: str | None = None
+    lot_no_exp_date: str | None = None
+    total_packs: Decimal | None = None
+    total_rx_count: int | None = None
+    total_ins_paid: Decimal | None = None
+    total_price: Decimal | None = None
+    total_cost: Decimal | None = None
 
 
 class MedicineResponse(MedicineBase):
@@ -66,23 +63,22 @@ class MedicineResponse(MedicineBase):
 
     id: int
     report_id: int
-    dispenses: List[DispenseResponse] = []
+    dispenses: list[DispenseResponse] = []
 
 
 # ---------------------------------------------------------------------------
 # DrugReport schemas
 # ---------------------------------------------------------------------------
 class DrugReportBase(BaseModel):
-    pharmacy_name: Optional[str] = None
-    pharmacy_address: Optional[str] = None
-    pharmacy_phone: Optional[str] = None
-    pharmacy_fax: Optional[str] = None
-    report_date: Optional[str] = None
-    report_from_date: Optional[str] = None
-    report_to_date: Optional[str] = None
-    grand_total_rx_count: Optional[int] = None
-    grand_total_price: Optional[Decimal] = None
-    grand_total_cost: Optional[Decimal] = None
+    medical_store_id: int
+    document_id: int | None = None
+    batch_id: int | None = None
+    report_date: str | None = None
+    report_from_date: str | None = None
+    report_to_date: str | None = None
+    grand_total_rx_count: int | None = None
+    grand_total_price: Decimal | None = None
+    grand_total_cost: Decimal | None = None
 
 
 class DrugReportResponse(DrugReportBase):
@@ -90,29 +86,7 @@ class DrugReportResponse(DrugReportBase):
 
     id: int
     created_at: datetime
-    medicines: List[MedicineResponse] = []
-
-
-# ---------------------------------------------------------------------------
-# Upload / confirmation response
-# ---------------------------------------------------------------------------
-class UploadSummary(BaseModel):
-    """Returned immediately after a successful PDF upload + DB insert."""
-
-    report_id: int
-    pharmacy_name: Optional[str]
-    report_from_date: Optional[str]
-    report_to_date: Optional[str]
-    medicines_saved: int
-    dispenses_saved: int
-    grand_total_rx_count: Optional[int]
-    grand_total_price: Optional[Decimal]
-    message: str = "PDF processed and stored successfully."
-
-
-class UploadBatchSummary(BaseModel):
-    reports: List[UploadSummary]
-    message: str = "Reports processed and stored successfully."
+    medicines: list[MedicineResponse] = []
 
 
 class DrugReportListItem(BaseModel):
@@ -122,8 +96,9 @@ class DrugReportListItem(BaseModel):
 
     id: int
     created_at: datetime
-    pharmacy_name: Optional[str]
-    report_from_date: Optional[str]
-    report_to_date: Optional[str]
-    grand_total_rx_count: Optional[int]
-    grand_total_price: Optional[Decimal]
+    medical_store_id: int
+    batch_id: int | None = None
+    report_from_date: str | None
+    report_to_date: str | None
+    grand_total_rx_count: int | None
+    grand_total_price: Decimal | None

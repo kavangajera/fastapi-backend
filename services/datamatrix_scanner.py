@@ -7,8 +7,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 from PIL import Image, UnidentifiedImageError
+
 try:
     from pylibdmtx.pylibdmtx import decode
+
     _LIBDMTX_AVAILABLE = True
 except Exception:
     decode = None
@@ -16,16 +18,19 @@ except Exception:
 
 try:
     from zxingcpp import BarcodeFormat, read_barcodes
+
     _ZXING_AVAILABLE = True
 except Exception:
     _ZXING_AVAILABLE = False
 
 try:
     import pillow_heif
+
     _HEIF_AVAILABLE = True
 except Exception:
     pillow_heif = None
     _HEIF_AVAILABLE = False
+
 
 def parse_gs1_datamatrix(raw_string):
     """
@@ -36,7 +41,7 @@ def parse_gs1_datamatrix(raw_string):
     # 21 = Serial Number (Variable up to 20 alphanumeric characters)
     # 17 = Expiry Date (6 digits: YYMMDD)
     # 10 = Lot Number (Variable up to 20 alphanumeric characters)
-    
+
     normalized = _normalize_gs1(raw_string)
 
     parsed_data = {
@@ -44,36 +49,42 @@ def parse_gs1_datamatrix(raw_string):
         "serial_number": None,
         "expiration_date": None,
         "lot_number": None,
-        "raw_data": raw_string
+        "raw_data": raw_string,
     }
-    
+
     # 1. Extract GTIN (Starts with 01, exactly 14 digits)
-    gtin_match = re.search(r'01(\d{14})', normalized)
+    gtin_match = re.search(r"01(\d{14})", normalized)
     if gtin_match:
         parsed_data["gtin"] = gtin_match.group(1)
-        
+
     # 2. Extract Expiration Date (Starts with 17, exactly 6 digits YYMMDD)
-    expiry_match = re.search(r'17(\d{6})', normalized)
+    expiry_match = re.search(r"17(\d{6})", normalized)
     if expiry_match:
-        yy, mm, dd = expiry_match.group(1)[0:2], expiry_match.group(1)[2:4], expiry_match.group(1)[4:6]
+        yy, mm, dd = (
+            expiry_match.group(1)[0:2],
+            expiry_match.group(1)[2:4],
+            expiry_match.group(1)[4:6],
+        )
         parsed_data["expiration_date"] = f"20{yy}-{mm}-{dd}"
-        
+
     # 3. Extract Serial Number (Starts with 21, alphanumeric, stops at next identifier or end)
     # Matches the exact pattern from your bottle label image
-    sn_match = re.search(r'21([A-Z0-9]{1,20})', normalized)
+    sn_match = re.search(r"21([A-Z0-9]{1,20})", normalized)
     if sn_match:
         parsed_data["serial_number"] = sn_match.group(1)
-        
+
     # 4. Extract Lot Number (Starts with 10, alphanumeric)
-    lot_match = re.search(r'10([A-Z0-9]{1,20})', normalized)
+    lot_match = re.search(r"10([A-Z0-9]{1,20})", normalized)
     if lot_match:
         parsed_data["lot_number"] = lot_match.group(1)
 
     return parsed_data
 
+
 def _normalize_gs1(raw_string):
     # Remove parentheses and separators, keep only AI/value sequence
     return re.sub(r"[()\s]", "", raw_string).upper()
+
 
 def scan_to_json(image_path):
     # Load the image
@@ -94,8 +105,8 @@ def scan_to_json(image_path):
     results = []
     for code in detected_codes:
         # Decode bytes payload to string (pylibdmtx returns bytes, zxing returns str)
-        raw_string = code.data.decode('utf-8') if hasattr(code, "data") else str(code)
-        
+        raw_string = code.data.decode("utf-8") if hasattr(code, "data") else str(code)
+
         # Parse the structured GS1 data blocks
         structured_data = parse_gs1_datamatrix(raw_string)
         results.append(structured_data)
@@ -154,6 +165,7 @@ def scan_image_bytes(image_bytes, *, debug=False, debug_dir=None, filename=None)
 
     return {"detected_items": results}
 
+
 def _generate_candidates(image):
     candidates = []
 
@@ -192,9 +204,13 @@ def _generate_candidates(image):
         ("adaptive_thresh", thresh),
         ("otsu", otsu),
     ]:
-        candidates.append({"label": f"{label}_rot90", "image": cv2.rotate(src, cv2.ROTATE_90_CLOCKWISE)})
+        candidates.append(
+            {"label": f"{label}_rot90", "image": cv2.rotate(src, cv2.ROTATE_90_CLOCKWISE)}
+        )
         candidates.append({"label": f"{label}_rot180", "image": cv2.rotate(src, cv2.ROTATE_180)})
-        candidates.append({"label": f"{label}_rot270", "image": cv2.rotate(src, cv2.ROTATE_90_COUNTERCLOCKWISE)})
+        candidates.append(
+            {"label": f"{label}_rot270", "image": cv2.rotate(src, cv2.ROTATE_90_COUNTERCLOCKWISE)}
+        )
 
     # Try crops around square-ish contours to avoid scanning the whole image
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -320,6 +336,7 @@ def _write_debug_dump(image, candidates, debug_dir, filename):
     with (run_dir / "manifest.json").open("w", encoding="utf-8") as handle:
         json.dump(manifest, handle, indent=2)
 
+
 def _decode_candidate(candidate):
     if _ZXING_AVAILABLE:
         results = _decode_with_zxing(candidate)
@@ -331,6 +348,7 @@ def _decode_candidate(candidate):
         return []
 
     return decode(candidate, timeout=200)
+
 
 def _decode_with_zxing(candidate):
     if not _ZXING_AVAILABLE:
@@ -345,9 +363,10 @@ def _decode_with_zxing(candidate):
     texts = [r.text for r in results if r.text]
     return texts
 
+
 if __name__ == "__main__":
     # Replace with your actual local image file path
-    image_file = "image.png" 
-    
+    image_file = "image.png"
+
     json_output = scan_to_json(image_file)
     print(json_output)

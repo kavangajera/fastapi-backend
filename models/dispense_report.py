@@ -1,0 +1,138 @@
+"""
+models/dispense_report.py
+─────────────────────────
+Domain models for *dispensed* prescription reports — the records of what
+medicines a pharmacy actually gave to patients (versus what it bought,
+which lives in `models/invoice.py`).
+
+Table names kept intentionally as `drug_reports` / `medicines` /
+`dispenses` for backward-compatible queries; only the Python module was
+renamed from `pharmacy_purchase_report.py` because that name conflated
+purchases (invoices) with dispenses.
+"""
+
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import (
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from core.async_db import Base
+
+
+class DrugReport(Base):
+    __tablename__ = "drug_reports"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, server_default=func.now())
+
+    medical_store_id: Mapped[int] = mapped_column(
+        ForeignKey("medical_store.medical_store_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_id: Mapped[int | None] = mapped_column(
+        ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    report_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    report_from_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    report_to_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    grand_total_rx_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    grand_total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    grand_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    medicines: Mapped[list["Medicine"]] = relationship(
+        "Medicine",
+        back_populates="report",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<DrugReport id={self.id} medical_store_id={self.medical_store_id} "
+            f"from={self.report_from_date} to={self.report_to_date}>"
+        )
+
+
+class Medicine(Base):
+    __tablename__ = "medicines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    report_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("drug_reports.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    drug_name: Mapped[str] = mapped_column(String(300), nullable=False)
+    ndc: Mapped[str] = mapped_column(String(11), nullable=False, index=True)
+    inventory_bucket: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    lot_no_exp_date: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    total_packs: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    total_rx_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    total_ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    total_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    report: Mapped["DrugReport"] = relationship("DrugReport", back_populates="medicines")
+    dispenses: Mapped[list["Dispense"]] = relationship(
+        "Dispense",
+        back_populates="medicine",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    def __repr__(self) -> str:
+        return f"<Medicine id={self.id} ndc={self.ndc!r} drug={self.drug_name!r}>"
+
+
+class Dispense(Base):
+    __tablename__ = "dispenses"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    medicine_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("medicines.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    qty_disp: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    qty_ord: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    days_supply: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    date_filled: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
+    rx_no: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
+    ref: Mapped[str | None] = mapped_column(String(10), nullable=True)
+
+    pat_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    pat_addr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pat_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    pres_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    pres_addr: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pres_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    ins_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    medicine: Mapped["Medicine"] = relationship("Medicine", back_populates="dispenses")
+
+    def __repr__(self) -> str:
+        return (
+            f"<Dispense id={self.id} rx_no={self.rx_no!r} "
+            f"pat={self.pat_name!r} date={self.date_filled!r}>"
+        )

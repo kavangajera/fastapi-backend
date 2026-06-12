@@ -63,9 +63,7 @@ class RetryConsumer:
         if self._consumer:
             await self._consumer.stop()
             self._consumer = None
-            logger.info(
-                "Retry consumer stopped: type={type}", type=self.process_type.value
-            )
+            logger.info("Retry consumer stopped: type={type}", type=self.process_type.value)
 
     async def run(self) -> None:
         if not self._consumer:
@@ -80,9 +78,7 @@ class RetryConsumer:
         except asyncio.CancelledError:
             pass
         finally:
-            logger.info(
-                "Retry consumer loop exited: type={type}", type=self.process_type.value
-            )
+            logger.info("Retry consumer loop exited: type={type}", type=self.process_type.value)
 
     async def _reinject(self, raw: dict) -> None:
         try:

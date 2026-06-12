@@ -5,11 +5,10 @@ Each model replaces the generic ``Response_Schema`` on specific endpoints so
 that Swagger/OpenAPI shows the **exact** shape of ``data`` instead of ``Any``.
 """
 
-from typing import List, Optional
 from pydantic import BaseModel, Field
 
-
 # ───────────────────── Data sub-models ─────────────────────
+
 
 class AccessTokenData(BaseModel):
     """JWT access token returned after login or token renewal."""
@@ -56,13 +55,14 @@ class PharmacyData(BaseModel):
     id: int = Field(..., description="Unique pharmacy identifier.", examples=[2])
     name: str = Field(..., description="Pharmacy name.", examples=["Deva'sShop"])
     address: str = Field(..., description="Street address.", examples=["skfnoajnf"])
-    owner: Optional[UserData] = Field(
+    owner: UserData | None = Field(
         None,
         description="Owner details (included for ADMIN, null for OWNER viewing own pharmacy).",
     )
 
 
 # ───────────────── Auth Responses ──────────────────
+
 
 class SignupResponse(BaseModel):
     """``POST /user/signup`` — creates a new PHARMACY_OWNER account."""
@@ -91,7 +91,9 @@ class LoginResponse(BaseModel):
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
     message: str = Field(..., description="Result summary.", examples=["Login successful"])
-    data: LoginData = Field(..., description="Object containing the JWT access token and user info.")
+    data: LoginData = Field(
+        ..., description="Object containing the JWT access token and user info."
+    )
 
     model_config = {
         "json_schema_extra": {
@@ -113,7 +115,9 @@ class TokenRenewResponse(BaseModel):
     """``GET /user/renew-access-token`` — issues a new access token from the refresh cookie."""
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
-    message: str = Field(..., description="Result summary.", examples=["Token renewed successfully"])
+    message: str = Field(
+        ..., description="Result summary.", examples=["Token renewed successfully"]
+    )
     data: AccessTokenData = Field(..., description="Object containing the new JWT access token.")
 
     model_config = {
@@ -131,11 +135,14 @@ class TokenRenewResponse(BaseModel):
 
 # ───────────────── User Responses ──────────────────
 
+
 class UserProfileResponse(BaseModel):
     """``GET /user/me`` — returns the authenticated user's profile."""
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
-    message: str = Field(..., description="Result summary.", examples=["Profile retrieved successfully"])
+    message: str = Field(
+        ..., description="Result summary.", examples=["Profile retrieved successfully"]
+    )
     data: UserData = Field(..., description="User profile object.")
 
     model_config = {
@@ -180,7 +187,7 @@ class UserDeleteResponse(BaseModel):
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
     message: str = Field(..., description="Result summary.", examples=["User deleted successfully"])
-    data: Optional[str] = Field(None, description="Always null on successful deletion.")
+    data: str | None = Field(None, description="Always null on successful deletion.")
 
     model_config = {
         "json_schema_extra": {
@@ -224,7 +231,7 @@ class TechnicianListResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Technicians retrieved successfully"]
     )
-    data: List[UserData] = Field(..., description="Array of technician profiles.")
+    data: list[UserData] = Field(..., description="Array of technician profiles.")
 
     model_config = {
         "json_schema_extra": {
@@ -250,12 +257,15 @@ class TechnicianListResponse(BaseModel):
 
 # ────────────── Admin User Responses ───────────────
 
+
 class UserListResponse(BaseModel):
     """``GET /user/all`` — returns all registered users (Admin only)."""
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
-    message: str = Field(..., description="Result summary.", examples=["Users retrieved successfully"])
-    data: List[UserData] = Field(..., description="Array of all user profiles.")
+    message: str = Field(
+        ..., description="Result summary.", examples=["Users retrieved successfully"]
+    )
+    data: list[UserData] = Field(..., description="Array of all user profiles.")
 
     model_config = {
         "json_schema_extra": {
@@ -288,7 +298,9 @@ class UserByEmailResponse(BaseModel):
     """``GET /user/by-email`` — finds a user by email address (Admin only)."""
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
-    message: str = Field(..., description="Result summary.", examples=["User retrieved successfully"])
+    message: str = Field(
+        ..., description="Result summary.", examples=["User retrieved successfully"]
+    )
     data: UserData = Field(..., description="Matching user profile.")
 
     model_config = {
@@ -310,8 +322,10 @@ class UsersByRoleResponse(BaseModel):
     """``GET /user/by-role`` — lists users filtered by role (Admin only)."""
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
-    message: str = Field(..., description="Result summary.", examples=["Users retrieved successfully"])
-    data: List[UserData] = Field(
+    message: str = Field(
+        ..., description="Result summary.", examples=["Users retrieved successfully"]
+    )
+    data: list[UserData] = Field(
         ..., description="Array of user profiles matching the requested role."
     )
 
@@ -338,6 +352,7 @@ class UsersByRoleResponse(BaseModel):
 
 
 # ────────────── Pharmacy Responses ─────────────────
+
 
 class PharmacyCreateResponse(BaseModel):
     """``POST /pharmacy/create-pharmacy`` — creates a new pharmacy."""
@@ -375,7 +390,7 @@ class PharmacyListResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Pharmacy retrieved successfully"]
     )
-    data: List[PharmacyData] = Field(..., description="Array of pharmacy objects.")
+    data: list[PharmacyData] = Field(..., description="Array of pharmacy objects.")
 
     model_config = {
         "json_schema_extra": {
@@ -445,7 +460,7 @@ class PharmacyDeleteResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Pharmacy deleted successfully"]
     )
-    data: Optional[str] = Field(None, description="Always null on successful deletion.")
+    data: str | None = Field(None, description="Always null on successful deletion.")
 
     model_config = {
         "json_schema_extra": {

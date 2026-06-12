@@ -1,8 +1,7 @@
 import re
-from typing import Optional
 
 
-def ndc10_to_ndc11_from_package_ndc(package_ndc: str) -> Optional[str]:
+def ndc10_to_ndc11_from_package_ndc(package_ndc: str) -> str | None:
     if not package_ndc:
         return None
 
@@ -22,7 +21,7 @@ def ndc10_to_ndc11_from_package_ndc(package_ndc: str) -> Optional[str]:
     return None
 
 
-def digits_only(value: Optional[str]) -> str:
+def digits_only(value: str | None) -> str:
     if not value:
         return ""
     return re.sub(r"[^0-9]", "", value)

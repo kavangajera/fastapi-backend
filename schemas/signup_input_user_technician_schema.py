@@ -5,7 +5,7 @@ class Signup_Input_User_Technician_Schema(BaseModel):
     """
     Registration payload for creating a new **TECHNICIAN** account.
 
-    A technician must be linked to an existing pharmacy via ``pharmacy_id``.
+    A technician must be linked to an existing pharmacy via ``medical_store_id``.
     Only OWNER and ADMIN roles can call the create-technician endpoint.
     """
 
@@ -29,7 +29,7 @@ class Signup_Input_User_Technician_Schema(BaseModel):
         description="Phone / contact number of the technician.",
         examples=["1234567890"],
     )
-    pharmacy_id: int = Field(
+    medical_store_id: int = Field(
         ...,
         description="ID of the pharmacy this technician will be assigned to. Must be an existing pharmacy owned by the authenticated user.",
         examples=[2],
@@ -42,7 +42,7 @@ class Signup_Input_User_Technician_Schema(BaseModel):
                 "user_email": "User2Tech@gmail.com",
                 "input_password": "123456",
                 "contact": "1234567890",
-                "pharmacy_id": 2,
+                "medical_store_id": 2,
             }
         }
     }

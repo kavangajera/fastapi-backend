@@ -1,15 +1,13 @@
 """
 services/report_service.py
 ──────────────────────────
-Persistence for extracted drug-dispense reports.
+Async persistence for a parsed dispense report.
 
-This mirrors the storage logic in ``routes/pharmacy_purchase_report.py``
-so the Kafka dispense worker can persist a report WITHOUT going through
-the HTTP route. The route is intentionally left untouched.
-
-Input is the standard report dict produced by
-``services.document_extractor.extract_report_from_file``:
-    { "pharmacy": {...}, "grand_total": {...}, "medicines": [...] }
+`reconcile_batch` (the cross-document quantity comparison) lives in
+`services/reconciliation_service.py` and is called explicitly by the
+reconciliation route after every batch member has finished — it is
+intentionally NOT triggered here so a single dispense upload doesn't
+implicitly reconcile against an unrelated invoice.
 """
 
 from __future__ import annotations
@@ -18,19 +16,10 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from loguru import logger
-from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import (
-    DrugReport,
-    Medicine,
-    Dispense,
-    InvoiceLineItem,
-    DispenseReconciliation,
-)
+from models import Dispense, DrugReport, Medicine
 
-
-# ── helpers (kept consistent with the route) ─────────────────────────────────
 
 def _to_decimal(value: Any | None) -> Decimal | None:
     if not value:
@@ -50,21 +39,9 @@ def _to_int(value: Any | None) -> int | None:
         return None
 
 
-def _sum_invoice_qty(items: list[InvoiceLineItem]) -> Decimal | None:
-    total = Decimal("0")
-    has_value = False
-    for item in items:
-        qty = _to_decimal(item.invoiced_qty)
-        if qty is None:
-            continue
-        total += qty
-        has_value = True
-    return total if has_value else None
-
-
-def _build_dispense(disp_data: dict, medicine: Medicine) -> Dispense:
+def _build_dispense(disp_data: dict, medicine_id: int) -> Dispense:
     return Dispense(
-        medicine_id=medicine.id,  # re-set after flush
+        medicine_id=medicine_id,
         qty_disp=_to_decimal(disp_data.get("qty_disp")),
         qty_ord=_to_decimal(disp_data.get("qty_ord")),
         days_supply=_to_int(disp_data.get("days_supply")),
@@ -83,34 +60,34 @@ def _build_dispense(disp_data: dict, medicine: Medicine) -> Dispense:
     )
 
 
-def store_report(db: Session, report_data: dict[str, Any]) -> dict[str, Any]:
-    """
-    Persist a parsed report (DrugReport + Medicines + Dispenses) and build
-    its DispenseReconciliation rows. Commits the session.
-
-    Returns a lightweight summary dict suitable for the result payload.
-    """
-    pharmacy = report_data["pharmacy"]
-    grand_total = report_data["grand_total"]
-    medicines = report_data["medicines"]
+async def store_report(
+    db: AsyncSession,
+    report_data: dict[str, Any],
+    *,
+    medical_store_id: int,
+    document_id: int | None = None,
+    batch_id: int | None = None,
+) -> dict[str, Any]:
+    """Persist a parsed DrugReport + Medicines + Dispenses (no reconciliation)."""
+    pharmacy_meta = report_data.get("pharmacy", {})
+    grand_total = report_data.get("grand_total", {})
+    medicines = report_data.get("medicines", [])
 
     db_report = DrugReport(
-        pharmacy_name=pharmacy.get("pharmacy_name") or None,
-        pharmacy_address=pharmacy.get("address") or None,
-        pharmacy_phone=pharmacy.get("phone") or None,
-        pharmacy_fax=pharmacy.get("fax") or None,
-        report_date=pharmacy.get("report_date") or None,
-        report_from_date=pharmacy.get("report_from_date") or None,
-        report_to_date=pharmacy.get("report_to_date") or None,
+        medical_store_id=medical_store_id,
+        document_id=document_id,
+        batch_id=batch_id,
+        report_date=pharmacy_meta.get("report_date") or None,
+        report_from_date=pharmacy_meta.get("report_from_date") or None,
+        report_to_date=pharmacy_meta.get("report_to_date") or None,
         grand_total_rx_count=_to_int(grand_total.get("total_rx_count")),
         grand_total_price=_to_decimal(grand_total.get("total_price")),
         grand_total_cost=_to_decimal(grand_total.get("total_cost")),
     )
     db.add(db_report)
-    db.flush()
+    await db.flush()
 
     total_dispenses = 0
-
     for med_data in medicines:
         totals = med_data.get("totals", {})
         db_med = Medicine(
@@ -126,88 +103,31 @@ def store_report(db: Session, report_data: dict[str, Any]) -> dict[str, Any]:
             total_cost=_to_decimal(totals.get("total_cost")),
         )
         db.add(db_med)
-        db.flush()
+        await db.flush()
 
-        dispenses = [
-            _build_dispense(disp_data, db_med)
-            for disp_data in med_data.get("dispenses", [])
-        ]
-        if dispenses:
-            for disp in dispenses:
-                disp.medicine_id = db_med.id
-            db.bulk_save_objects(dispenses)
-            total_dispenses += len(dispenses)
+        for disp_data in med_data.get("dispenses", []):
+            db.add(_build_dispense(disp_data, db_med.id))
+            total_dispenses += 1
 
-    db.commit()
-    db.refresh(db_report)
-
-    # ── Reconciliation: invoice qty vs dispensed qty per code ────────
-    report_codes: set[str] = set()
-    for med in medicines:
-        ndc = str(med.get("ndc")) if med.get("ndc") else None
-        if ndc:
-            report_codes.add(ndc)
-
-    invoice_upcs = (
-        db.query(InvoiceLineItem.upc)
-        .filter(InvoiceLineItem.upc != None)  # noqa: E711
-        .distinct()
-        .all()
-    )
-    for (upc,) in invoice_upcs:
-        if upc and upc not in report_codes:
-            report_codes.add(upc)
-
-    for code in report_codes:
-        dispensed_qty = (
-            db.query(func.sum(Dispense.qty_disp))
-            .join(Medicine, Medicine.id == Dispense.medicine_id)
-            .filter(Medicine.report_id == db_report.id, Medicine.ndc == code)
-            .scalar()
-        )
-        invoice_items = (
-            db.query(InvoiceLineItem)
-            .filter(
-                (InvoiceLineItem.ndc11 == code) | (InvoiceLineItem.upc == code)
-            )
-            .all()
-        )
-        invoice_qty = _sum_invoice_qty(invoice_items)
-
-        remaining_qty = None
-        if invoice_qty is not None and dispensed_qty is not None:
-            remaining_qty = invoice_qty - dispensed_qty
-
-        db.add(
-            DispenseReconciliation(
-                report_id=db_report.id,
-                ndc11=code,
-                invoice_qty=invoice_qty,
-                dispensed_qty=dispensed_qty,
-                remaining_qty=remaining_qty,
-            )
-        )
-
-    db.commit()
+    await db.flush()
 
     logger.info(
-        "Report stored (worker): report_id={report_id} medicines={med} dispenses={disp}",
-        report_id=db_report.id,
-        med=len(medicines),
-        disp=total_dispenses,
+        "Stored dispense report: report_id={rid} medical_store_id={ph} medicines={m} dispenses={d}",
+        rid=db_report.id,
+        ph=medical_store_id,
+        m=len(medicines),
+        d=total_dispenses,
     )
 
     return {
         "report_id": db_report.id,
-        "pharmacy_name": db_report.pharmacy_name,
+        "medical_store_id": medical_store_id,
         "report_from_date": db_report.report_from_date,
         "report_to_date": db_report.report_to_date,
         "medicines_saved": len(medicines),
         "dispenses_saved": total_dispenses,
         "grand_total_rx_count": db_report.grand_total_rx_count,
         "grand_total_price": (
-            str(db_report.grand_total_price)
-            if db_report.grand_total_price is not None
-            else None
+            str(db_report.grand_total_price) if db_report.grand_total_price is not None else None
         ),
     }

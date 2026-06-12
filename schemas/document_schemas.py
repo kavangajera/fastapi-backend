@@ -7,7 +7,7 @@ Pydantic request/response models for the /documents endpoints.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -23,10 +23,10 @@ class DocumentUploadResponse(BaseModel):
 
     doc_key: str
     process_type: str
-    status: str            # COMPLETED | FAILED_PERMANENTLY | QUEUED (timeout)
+    status: str  # COMPLETED | FAILED_PERMANENTLY | QUEUED (timeout)
     message: str
-    data: Optional[Any] = None
-    error: Optional[str] = None
+    data: Any | None = None
+    error: str | None = None
 
 
 class DocumentStatusResponse(BaseModel):
@@ -35,12 +35,12 @@ class DocumentStatusResponse(BaseModel):
     doc_key: str
     document_type: str
     process_type: str
-    original_filename: Optional[str] = None
-    file_size: Optional[int] = None
+    original_filename: str | None = None
+    file_size: int | None = None
     status: str
     retry_count: int
-    error_message: Optional[str] = None
-    result_data: Optional[str] = None
+    error_message: str | None = None
+    result_data: str | None = None
     created_at: datetime
     updated_at: datetime
 

@@ -1,32 +1,46 @@
 from fastapi import APIRouter
+
 from schemas.response_models import (
-    SignupResponse,
     LoginResponse,
-    TokenRenewResponse,
-    TechnicianCreateResponse,
-    TechnicianListResponse,
-    UserProfileResponse,
-    UserUpdateResponse,
-    UserDeleteResponse,
-    UserListResponse,
-    UserByEmailResponse,
-    UsersByRoleResponse,
     PharmacyCreateResponse,
+    PharmacyDeleteResponse,
     PharmacyListResponse,
     PharmacyUpdateResponse,
-    PharmacyDeleteResponse,
+    SignupResponse,
+    TechnicianCreateResponse,
+    TechnicianListResponse,
+    TokenRenewResponse,
+    UserByEmailResponse,
+    UserDeleteResponse,
+    UserListResponse,
+    UserProfileResponse,
+    UsersByRoleResponse,
+    UserUpdateResponse,
 )
-from .user import create_user, create_technician
-from .user import login_user
-from .user import renew_access_token
-from .user import get_technicians
-from .user import update_user, delete_user
-from .user import update_me, delete_me
-from .user import get_all_users, get_user_by_email, get_users_by_role, get_my_profile
 
-from .pharmacy import create_pharmacy, get_pharmacy_by_owner_id
-from .pharmacy import get_pharmacy
-from .pharmacy import update_pharmacy, delete_pharmacy, get_pharmacy_by_name
+from .pharmacy import (
+    create_pharmacy,
+    delete_pharmacy,
+    get_pharmacy,
+    get_pharmacy_by_name,
+    get_pharmacy_by_owner_id,
+    update_pharmacy,
+)
+from .user import (
+    create_technician,
+    create_user,
+    delete_me,
+    delete_user,
+    get_all_users,
+    get_my_profile,
+    get_technicians,
+    get_user_by_email,
+    get_users_by_role,
+    login_user,
+    renew_access_token,
+    update_me,
+    update_user,
+)
 
 router = APIRouter()
 
@@ -34,7 +48,7 @@ router = APIRouter()
 # ================= AUTH ROUTES =================
 
 router.add_api_route(
-    '/user/signup',
+    "/user/signup",
     endpoint=create_user,
     methods=["POST"],
     tags=["Auth"],
@@ -51,7 +65,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/login',
+    "/user/login",
     endpoint=login_user,
     methods=["POST"],
     tags=["Auth"],
@@ -69,7 +83,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/renew-access-token',
+    "/user/renew-access-token",
     endpoint=renew_access_token,
     methods=["GET"],
     tags=["Auth"],
@@ -89,7 +103,7 @@ router.add_api_route(
 # ================= USER ROUTES =================
 
 router.add_api_route(
-    '/user/create-technician',
+    "/user/create-technician",
     endpoint=create_technician,
     methods=["POST"],
     tags=["User"],
@@ -108,7 +122,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/get-technician',
+    "/user/get-technician",
     endpoint=get_technicians,
     methods=["POST"],
     tags=["User"],
@@ -127,7 +141,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/me',
+    "/user/me",
     endpoint=get_my_profile,
     methods=["GET"],
     tags=["User"],
@@ -142,7 +156,7 @@ router.add_api_route(
 
 # /me routes MUST be before /{user_id} routes to avoid path conflicts
 router.add_api_route(
-    '/user/update/me',
+    "/user/update/me",
     endpoint=update_me,
     methods=["PUT"],
     tags=["User"],
@@ -158,7 +172,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/delete/me',
+    "/user/delete/me",
     endpoint=delete_me,
     methods=["DELETE"],
     tags=["User"],
@@ -173,7 +187,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/update/{user_id}',
+    "/user/update/{user_id}",
     endpoint=update_user,
     methods=["PUT"],
     tags=["User"],
@@ -192,7 +206,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/delete/{user_id}',
+    "/user/delete/{user_id}",
     endpoint=delete_user,
     methods=["DELETE"],
     tags=["User"],
@@ -214,7 +228,7 @@ router.add_api_route(
 # ================= ADMIN ROUTES =================
 
 router.add_api_route(
-    '/user/all',
+    "/user/all",
     endpoint=get_all_users,
     methods=["GET"],
     tags=["Admin"],
@@ -228,7 +242,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/by-email',
+    "/user/by-email",
     endpoint=get_user_by_email,
     methods=["GET"],
     tags=["Admin"],
@@ -243,7 +257,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/user/by-role',
+    "/user/by-role",
     endpoint=get_users_by_role,
     methods=["GET"],
     tags=["Admin"],
@@ -261,7 +275,7 @@ router.add_api_route(
 # ================= PHARMACY ROUTES =================
 
 router.add_api_route(
-    '/pharmacy/create-pharmacy',
+    "/pharmacy/create-pharmacy",
     endpoint=create_pharmacy,
     methods=["POST"],
     tags=["Pharmacy"],
@@ -280,7 +294,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/pharmacy/get-pharmacy',
+    "/pharmacy/get-pharmacy",
     endpoint=get_pharmacy,
     methods=["GET"],
     tags=["Pharmacy"],
@@ -300,7 +314,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/pharmacy/get-pharmacy-by-owner',
+    "/pharmacy/get-pharmacy-by-owner",
     endpoint=get_pharmacy_by_owner_id,
     methods=["GET"],
     tags=["Admin"],
@@ -314,7 +328,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/pharmacy/by-name',
+    "/pharmacy/by-name",
     endpoint=get_pharmacy_by_name,
     methods=["GET"],
     tags=["Pharmacy"],
@@ -334,7 +348,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/pharmacy/update/{ph_id}',
+    "/pharmacy/update/{ph_id}",
     endpoint=update_pharmacy,
     methods=["PUT"],
     tags=["Pharmacy"],
@@ -354,7 +368,7 @@ router.add_api_route(
 )
 
 router.add_api_route(
-    '/pharmacy/delete/{ph_id}',
+    "/pharmacy/delete/{ph_id}",
     endpoint=delete_pharmacy,
     methods=["DELETE"],
     tags=["Pharmacy"],

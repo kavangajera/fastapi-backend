@@ -10,10 +10,7 @@ All other fields are optional, matching the Invoice / InvoiceLineItem / InvoiceS
 
 from __future__ import annotations
 
-from datetime import datetime
-from typing import List, Optional
-
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
@@ -37,33 +34,35 @@ class ManualInvoiceLineItemInput(BaseModel):
     )
 
     # ── everything else is optional ──────────────────────────────────────
-    line: Optional[str] = Field(None, description="Line number on the invoice")
-    item_code: Optional[str] = None
-    raw_ndc: Optional[str] = None
-    upc: Optional[str] = None
-    lot_number: Optional[str] = None
-    orig_order_qty: Optional[str] = None
-    order_qty: Optional[str] = None
-    uom: Optional[str] = None
-    description: Optional[str] = None
-    size: Optional[str] = None
-    form: Optional[str] = None
-    unit_price: Optional[str] = None
-    extended_price: Optional[str] = None
-    awp: Optional[str] = None
-    note_code: Optional[str] = None
+    line: str | None = Field(None, description="Line number on the invoice")
+    item_code: str | None = None
+    raw_ndc: str | None = None
+    upc: str | None = None
+    lot_number: str | None = None
+    orig_order_qty: str | None = None
+    order_qty: str | None = None
+    uom: str | None = None
+    description: str | None = None
+    size: str | None = None
+    form: str | None = None
+    unit_price: str | None = None
+    extended_price: str | None = None
+    awp: str | None = None
+    note_code: str | None = None
 
     # ── verification / FDA fields ────────────────────────────────────────
-    verification_required: bool = Field(True, description="Whether barcode verification is required")
+    verification_required: bool = Field(
+        True, description="Whether barcode verification is required"
+    )
     verified: bool = Field(False, description="Whether the item has been verified")
-    fda_package_ndc: Optional[str] = None
-    fda_ndc11: Optional[str] = None
+    fda_package_ndc: str | None = None
+    fda_ndc11: str | None = None
 
     # ── DataMatrix barcode fields ────────────────────────────────────────
-    dm_gtin: Optional[str] = None
-    dm_serial_number: Optional[str] = None
-    dm_expiration_date: Optional[str] = None
-    dm_lot_number: Optional[str] = None
+    dm_gtin: str | None = None
+    dm_serial_number: str | None = None
+    dm_expiration_date: str | None = None
+    dm_lot_number: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -72,12 +71,12 @@ class ManualInvoiceLineItemInput(BaseModel):
 class ManualInvoiceSummaryInput(BaseModel):
     """Invoice-level totals — entirely optional."""
 
-    order_line_total: Optional[str] = None
-    fuel_surcharge: Optional[str] = None
-    sub_total: Optional[str] = None
-    tax: Optional[str] = None
-    grand_total: Optional[str] = None
-    total_due_by: Optional[str] = None
+    order_line_total: str | None = None
+    fuel_surcharge: str | None = None
+    sub_total: str | None = None
+    tax: str | None = None
+    grand_total: str | None = None
+    total_due_by: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -92,45 +91,45 @@ class ManualInvoiceInput(BaseModel):
     """
 
     # ── Seller info ──────────────────────────────────────────────────────
-    seller_name: Optional[str] = None
-    seller_address: Optional[str] = None
-    seller_phone: Optional[str] = None
-    seller_dea: Optional[str] = None
-    seller_permit: Optional[str] = None
-    seller_fed_id: Optional[str] = None
+    seller_name: str | None = None
+    seller_address: str | None = None
+    seller_phone: str | None = None
+    seller_dea: str | None = None
+    seller_permit: str | None = None
+    seller_fed_id: str | None = None
 
     # ── Invoice meta ─────────────────────────────────────────────────────
-    invoice_number: Optional[str] = None
-    invoice_date: Optional[str] = None
-    order_number: Optional[str] = None
-    due_date: Optional[str] = None
-    terms_of_payment: Optional[str] = None
-    your_order_number: Optional[str] = None
+    invoice_number: str | None = None
+    invoice_date: str | None = None
+    order_number: str | None = None
+    due_date: str | None = None
+    terms_of_payment: str | None = None
+    your_order_number: str | None = None
 
     # ── Customer info ────────────────────────────────────────────────────
-    customer_number: Optional[str] = None
-    customer_name: Optional[str] = None
-    customer_dea: Optional[str] = None
-    customer_state_reg: Optional[str] = None
+    customer_number: str | None = None
+    customer_name: str | None = None
+    customer_dea: str | None = None
+    customer_state_reg: str | None = None
 
     # ── Addresses ────────────────────────────────────────────────────────
-    bill_to_name: Optional[str] = None
-    bill_to_address: Optional[str] = None
-    ship_to_name: Optional[str] = None
-    ship_to_address: Optional[str] = None
-    remit_to_name: Optional[str] = None
-    remit_to_address: Optional[str] = None
-    remit_to_phone: Optional[str] = None
+    bill_to_name: str | None = None
+    bill_to_address: str | None = None
+    ship_to_name: str | None = None
+    ship_to_address: str | None = None
+    remit_to_name: str | None = None
+    remit_to_address: str | None = None
+    remit_to_phone: str | None = None
 
     # ── Line items (required) ────────────────────────────────────────────
-    line_items: List[ManualInvoiceLineItemInput] = Field(
+    line_items: list[ManualInvoiceLineItemInput] = Field(
         ...,
         min_length=1,
         description="At least one line item is required.",
     )
 
     # ── Optional summary ─────────────────────────────────────────────────
-    summary: Optional[ManualInvoiceSummaryInput] = None
+    summary: ManualInvoiceSummaryInput | None = None
 
 
 # ---------------------------------------------------------------------------

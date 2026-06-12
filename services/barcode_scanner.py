@@ -2,13 +2,14 @@ import base64
 import json
 import re
 from io import BytesIO
-from typing import Optional, Dict, Any
+from typing import Any
 from urllib.parse import quote
 
 import requests
+from loguru import logger
 from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel
-from loguru import logger
+
 # Lazy import: pyzbar requires the native `zbar` shared library.
 # On macOS: brew install zbar
 # On Debian/Ubuntu: apt-get install libzbar0
@@ -17,6 +18,7 @@ from loguru import logger
 # the error surfaces only when the barcode endpoint is actually called.
 try:
     from pyzbar.pyzbar import decode as _pyzbar_decode
+
     _PYZBAR_AVAILABLE = True
 except ImportError:
     _pyzbar_decode = None  # type: ignore[assignment]
@@ -36,11 +38,11 @@ def _decode_barcode(image):
 
 
 class ExtractedBarcodeData(BaseModel):
-    ndc: Optional[str] = None
-    exp: Optional[str] = None
-    lot: Optional[str] = None
-    sn: Optional[str] = None
-    gtin: Optional[str] = None
+    ndc: str | None = None
+    exp: str | None = None
+    lot: str | None = None
+    sn: str | None = None
+    gtin: str | None = None
 
 
 class BarcodeScannerService:
@@ -81,9 +83,7 @@ class BarcodeScannerService:
 
         if is_heif:
             if not pillow_heif:
-                raise UnidentifiedImageError(
-                    "HEIC/HEIF upload requires pillow-heif"
-                )
+                raise UnidentifiedImageError("HEIC/HEIF upload requires pillow-heif")
 
             heif_file = pillow_heif.read_heif(image_bytes)
             pil_image = Image.frombytes(
@@ -94,15 +94,11 @@ class BarcodeScannerService:
             ).convert("RGB")
         else:
             try:
-                pil_image = Image.open(
-                    BytesIO(image_bytes)
-                ).convert("RGB")
+                pil_image = Image.open(BytesIO(image_bytes)).convert("RGB")
             except UnidentifiedImageError as exc:
                 # Some clients send raw bytes that aren't base64; retry as-is.
                 try:
-                    pil_image = Image.open(
-                        BytesIO(image_base64.encode("utf-8"))
-                    ).convert("RGB")
+                    pil_image = Image.open(BytesIO(image_base64.encode("utf-8"))).convert("RGB")
                 except Exception:
                     raise exc
 
@@ -112,7 +108,7 @@ class BarcodeScannerService:
     # FAST BARCODE SCANNER (pyzbar)
     # =========================================================
 
-    def scan_barcode(self, pil_image: Image.Image) -> Dict[str, Any]:
+    def scan_barcode(self, pil_image: Image.Image) -> dict[str, Any]:
         logger.info("Scanning barcode using pyzbar...")
 
         extracted = {
@@ -129,20 +125,14 @@ class BarcodeScannerService:
                 return extracted
 
             for item in decoded_items:
-                barcode_data = (
-                    item.data.decode("utf-8", errors="ignore")
-                    if item.data
-                    else ""
-                )
+                barcode_data = item.data.decode("utf-8", errors="ignore") if item.data else ""
 
                 barcode_data = barcode_data.strip()
 
                 if not barcode_data:
                     continue
 
-                logger.info(
-                    f"Detected barcode: {barcode_data}"
-                )
+                logger.info(f"Detected barcode: {barcode_data}")
 
                 extracted["raw_barcode"] = barcode_data
 
@@ -197,19 +187,11 @@ class BarcodeScannerService:
         # 00597015230 -> 0597-0152-30
 
         if len(clean_ndc) == 11:
-            return (
-                f"{clean_ndc[1:5]}-"
-                f"{clean_ndc[5:9]}-"
-                f"{clean_ndc[9:11]}"
-            )
+            return f"{clean_ndc[1:5]}-{clean_ndc[5:9]}-{clean_ndc[9:11]}"
 
         # 10-digit (default to 5-3-2)
         if len(clean_ndc) == 10:
-            return (
-                f"{clean_ndc[:5]}-"
-                f"{clean_ndc[5:8]}-"
-                f"{clean_ndc[8:10]}"
-            )
+            return f"{clean_ndc[:5]}-{clean_ndc[5:8]}-{clean_ndc[8:10]}"
 
         # Already formatted
         if ndc.count("-") == 2:
@@ -228,9 +210,7 @@ class BarcodeScannerService:
             return []
 
         if len(clean_ndc) == 11:
-            return [
-                f"{clean_ndc[1:5]}-{clean_ndc[5:9]}-{clean_ndc[9:11]}"
-            ]
+            return [f"{clean_ndc[1:5]}-{clean_ndc[5:9]}-{clean_ndc[9:11]}"]
 
         if len(clean_ndc) == 10:
             return [
@@ -249,16 +229,11 @@ class BarcodeScannerService:
         last_url = None
 
         for candidate in self.build_ndc_candidates(package_ndc):
-            search_query = (
-                f'packaging.package_ndc:"{candidate}"'
-            )
+            search_query = f'packaging.package_ndc:"{candidate}"'
 
             encoded_query = quote(search_query)
 
-            fda_url = (
-                "https://api.fda.gov/drug/ndc.json"
-                f"?search={encoded_query}"
-            )
+            fda_url = f"https://api.fda.gov/drug/ndc.json?search={encoded_query}"
 
             logger.info(f"FDA query URL: {fda_url}")
 
@@ -268,10 +243,7 @@ class BarcodeScannerService:
                     timeout=30,
                 )
 
-                logger.info(
-                    f"FDA response status: "
-                    f"{response.status_code}"
-                )
+                logger.info(f"FDA response status: {response.status_code}")
 
                 if response.status_code == 200:
                     return response.json(), fda_url, candidate
@@ -279,9 +251,7 @@ class BarcodeScannerService:
                 last_error = response.text
                 last_url = fda_url
 
-                logger.warning(
-                    f"FDA API error: {response.text}"
-                )
+                logger.warning(f"FDA API error: {response.text}")
 
             except Exception as e:
                 last_error = str(e)
@@ -289,18 +259,14 @@ class BarcodeScannerService:
 
                 logger.error(f"FDA request failed: {e}")
 
-        return {
-            "error": last_error
-        }, last_url, None
+        return {"error": last_error}, last_url, None
 
     # =========================================================
     # MAIN PIPELINE
     # =========================================================
 
     def process_barcode_base64(self, image_base64: str):
-        pil_image = self.load_image_from_base64(
-            image_base64
-        )
+        pil_image = self.load_image_from_base64(image_base64)
 
         barcode_data = self.scan_barcode(pil_image)
 
@@ -308,17 +274,11 @@ class BarcodeScannerService:
 
         package_ndc = None
         if ndc:
-            package_ndc = self.normalize_package_ndc(
-                str(ndc)
-            )
+            package_ndc = self.normalize_package_ndc(str(ndc))
 
-        logger.info(
-            f"Normalized package NDC: {package_ndc}"
-        )
+        logger.info(f"Normalized package NDC: {package_ndc}")
 
-        fda_data, fda_url, matched_package_ndc = self.query_fda(
-            package_ndc
-        )
+        fda_data, fda_url, matched_package_ndc = self.query_fda(package_ndc)
 
         if matched_package_ndc:
             package_ndc = matched_package_ndc
@@ -346,13 +306,9 @@ class BarcodeScannerService:
 
     def process_barcode_image(self, image_path: str):
         with open(image_path, "rb") as image_file:
-            image_base64 = base64.b64encode(
-                image_file.read()
-            ).decode("utf-8")
+            image_base64 = base64.b64encode(image_file.read()).decode("utf-8")
 
-        return self.process_barcode_base64(
-            image_base64
-        )
+        return self.process_barcode_base64(image_base64)
 
 
 # =============================================================
@@ -365,25 +321,17 @@ if __name__ == "__main__":
 
     processor = BarcodeScannerService()
 
-    base_dir = os.path.dirname(
-        os.path.abspath(__file__)
-    )
+    base_dir = os.path.dirname(os.path.abspath(__file__))
 
     default_image = os.path.join(
         base_dir,
         "image.png",
     )
 
-    image_to_test = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else default_image
-    )
+    image_to_test = sys.argv[1] if len(sys.argv) > 1 else default_image
 
     try:
-        result = processor.process_barcode_image(
-            image_to_test
-        )
+        result = processor.process_barcode_image(image_to_test)
 
         print(json.dumps(result, indent=2))
 

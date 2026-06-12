@@ -31,6 +31,7 @@ def setup_logging() -> None:
 
     # In-memory ring buffer for the dashboard log stream (no DB tracking)
     from core.log_buffer import log_buffer
+
     logger.add(
         log_buffer.sink,
         level="DEBUG",

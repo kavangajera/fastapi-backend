@@ -1,32 +1,34 @@
 """
 kafka_worker/handlers
 ─────────────────────
-One handler per ProcessType. Each handler is a SYNC callable
-``handler(db, doc) -> dict`` that loads the stored file, calls the
-already-built service, and returns a JSON-serializable result payload.
+One handler per ProcessType. Each handler is an ASYNC callable
 
-The base worker runs handlers in a thread (asyncio.to_thread) so the
-event loop stays free for Kafka heartbeats during heavy/blocking work.
+    async def handler(session: AsyncSession, doc: Document, *,
+                      medical_store_id: int, batch_id: int | None) -> dict
+
+The base worker awaits the handler on the event loop. CPU/IO bound
+extraction inside each handler is wrapped in `asyncio.to_thread`.
 """
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Awaitable, Callable
 
 from core.enums import ProcessType
-from kafka_worker.handlers.invoice_handler import handle_invoice
-from kafka_worker.handlers.dispense_handler import handle_dispense
 from kafka_worker.handlers.barcode_handler import handle_barcode
+from kafka_worker.handlers.dispense_handler import handle_dispense
+from kafka_worker.handlers.invoice_handler import handle_invoice
 
-# Handler signature: (db: Session, doc: Document) -> dict
-HANDLERS: dict[ProcessType, Callable] = {
+HandlerFn = Callable[..., Awaitable[dict]]
+
+HANDLERS: dict[ProcessType, HandlerFn] = {
     ProcessType.INVOICE: handle_invoice,
     ProcessType.DISPENSE: handle_dispense,
     ProcessType.BARCODE: handle_barcode,
 }
 
 
-def get_handler(process_type: ProcessType) -> Callable:
+def get_handler(process_type: ProcessType) -> HandlerFn:
     handler = HANDLERS.get(process_type)
     if handler is None:
         raise ValueError(f"No handler registered for process type: {process_type}")

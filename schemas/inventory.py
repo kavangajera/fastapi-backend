@@ -1,0 +1,29 @@
+"""
+schemas/inventory.py
+────────────────────
+Strict response schemas for the inventory GET endpoints.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+from pydantic import BaseModel, ConfigDict
+
+
+class InventoryRow(BaseModel):
+    model_config = ConfigDict(extra="forbid", from_attributes=True)
+
+    code: str
+    product_name: str | None = None
+    quantity: str  # serialized Decimal
+    last_invoice_id: int | None = None
+    updated_at: datetime | None = None
+
+
+class InventoryListResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    medical_store_id: int
+    items: list[InventoryRow]
+    total: int

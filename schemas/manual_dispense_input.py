@@ -10,11 +10,9 @@ All other fields are optional, matching the DrugReport / Medicine / Dispense mod
 
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal
-from typing import List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
@@ -30,20 +28,20 @@ class ManualDispenseItemInput(BaseModel):
     )
 
     # ── everything else is optional ──────────────────────────────────────
-    qty_ord: Optional[Decimal] = None
-    days_supply: Optional[int] = None
-    date_filled: Optional[str] = Field(None, description="MM/DD/YYYY")
-    rx_no: Optional[str] = None
-    ref: Optional[str] = None
-    pat_name: Optional[str] = None
-    pat_addr: Optional[str] = None
-    pat_phone: Optional[str] = None
-    pres_name: Optional[str] = None
-    pres_addr: Optional[str] = None
-    pres_phone: Optional[str] = None
-    price: Optional[Decimal] = None
-    ins_paid: Optional[Decimal] = None
-    ins_code: Optional[str] = None
+    qty_ord: Decimal | None = None
+    days_supply: int | None = None
+    date_filled: str | None = Field(None, description="MM/DD/YYYY")
+    rx_no: str | None = None
+    ref: str | None = None
+    pat_name: str | None = None
+    pat_addr: str | None = None
+    pat_phone: str | None = None
+    pres_name: str | None = None
+    pres_addr: str | None = None
+    pres_phone: str | None = None
+    price: Decimal | None = None
+    ins_paid: Decimal | None = None
+    ins_code: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -59,22 +57,22 @@ class ManualMedicineInput(BaseModel):
         description="11-digit NDC (required)",
         examples=["00093505601"],
     )
-    drug_name: Optional[str] = Field(
+    drug_name: str | None = Field(
         "Unknown",
         description="Drug name (defaults to 'Unknown' if omitted)",
     )
 
     # ── optional drug-level fields ───────────────────────────────────────
-    inventory_bucket: Optional[str] = None
-    lot_no_exp_date: Optional[str] = None
-    total_packs: Optional[Decimal] = None
-    total_rx_count: Optional[int] = None
-    total_ins_paid: Optional[Decimal] = None
-    total_price: Optional[Decimal] = None
-    total_cost: Optional[Decimal] = None
+    inventory_bucket: str | None = None
+    lot_no_exp_date: str | None = None
+    total_packs: Decimal | None = None
+    total_rx_count: int | None = None
+    total_ins_paid: Decimal | None = None
+    total_price: Decimal | None = None
+    total_cost: Decimal | None = None
 
     # ── dispense lines (at least one required) ───────────────────────────
-    dispenses: List[ManualDispenseItemInput] = Field(
+    dispenses: list[ManualDispenseItemInput] = Field(
         ...,
         min_length=1,
         description="At least one dispense line is required per medicine.",
@@ -93,23 +91,23 @@ class ManualDispenseReportInput(BaseModel):
     """
 
     # ── Pharmacy header ──────────────────────────────────────────────────
-    pharmacy_name: Optional[str] = None
-    pharmacy_address: Optional[str] = None
-    pharmacy_phone: Optional[str] = None
-    pharmacy_fax: Optional[str] = None
+    pharmacy_name: str | None = None
+    pharmacy_address: str | None = None
+    pharmacy_phone: str | None = None
+    pharmacy_fax: str | None = None
 
     # ── Report meta ──────────────────────────────────────────────────────
-    report_date: Optional[str] = None
-    report_from_date: Optional[str] = None
-    report_to_date: Optional[str] = None
+    report_date: str | None = None
+    report_from_date: str | None = None
+    report_to_date: str | None = None
 
     # ── Grand totals ─────────────────────────────────────────────────────
-    grand_total_rx_count: Optional[int] = None
-    grand_total_price: Optional[Decimal] = None
-    grand_total_cost: Optional[Decimal] = None
+    grand_total_rx_count: int | None = None
+    grand_total_price: Decimal | None = None
+    grand_total_cost: Decimal | None = None
 
     # ── Medicines (required) ─────────────────────────────────────────────
-    medicines: List[ManualMedicineInput] = Field(
+    medicines: list[ManualMedicineInput] = Field(
         ...,
         min_length=1,
         description="At least one medicine entry is required.",

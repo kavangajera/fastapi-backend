@@ -1,5 +1,4 @@
 from pydantic import BaseModel, Field
-from typing import Optional
 
 
 class UserUpdateInput(BaseModel):
@@ -11,17 +10,17 @@ class UserUpdateInput(BaseModel):
     ``PUT /user/update/{user_id}`` (OWNER/ADMIN only) to update another user.
     """
 
-    name: Optional[str] = Field(
+    name: str | None = Field(
         None,
         description="New display name for the user. Omit to keep the current value.",
         examples=["UpdatedUser2"],
     )
-    user_email: Optional[str] = Field(
+    user_email: str | None = Field(
         None,
         description="New email address. Must be unique across the platform. Omit to keep the current value.",
         examples=["updated_user2@gmail.com"],
     )
-    phone: Optional[str] = Field(
+    phone: str | None = Field(
         None,
         description="New contact / phone number. Omit to keep the current value.",
         examples=["9876543210"],

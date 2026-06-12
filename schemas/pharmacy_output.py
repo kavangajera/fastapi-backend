@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional
+
 from schemas.user_output import UserOutput
 
 
@@ -8,7 +8,7 @@ class PharmacyOutput(BaseModel):
 
     id: int = Field(
         ...,
-        alias="pharmacy_id",
+        alias="medical_store_id",
         description="Unique numeric identifier of the pharmacy.",
         examples=[2],
     )
@@ -24,7 +24,7 @@ class PharmacyOutput(BaseModel):
         description="Physical street address of the pharmacy.",
         examples=["skfnoajnf"],
     )
-    owner: Optional[UserOutput] = Field(
+    owner: UserOutput | None = Field(
         default=None,
         alias="owner",
         description="Owner details (populated when the endpoint joins user data). Null when not loaded.",

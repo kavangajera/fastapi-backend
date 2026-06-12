@@ -21,8 +21,8 @@ from aiokafka import AIOKafkaProducer
 from loguru import logger
 
 from core.config import settings
-from kafka_infra.messages import ProcessingJob, ProcessingResult
 from kafka_infra import topics
+from kafka_infra.messages import ProcessingJob, ProcessingResult
 
 
 class KafkaProducerService:
@@ -60,9 +60,7 @@ class KafkaProducerService:
 
     def _require(self) -> AIOKafkaProducer:
         if not self._producer:
-            raise RuntimeError(
-                "Kafka producer is not started. Call kafka_producer.start() first."
-            )
+            raise RuntimeError("Kafka producer is not started. Call kafka_producer.start() first.")
         return self._producer
 
     # ── Jobs ─────────────────────────────────────────────────────────
@@ -70,9 +68,7 @@ class KafkaProducerService:
     async def publish_job(self, job: ProcessingJob) -> None:
         """Publish a job to the main ``<type>-processing`` topic."""
         topic = topics.main_topic(job.process_type)
-        await self._require().send_and_wait(
-            topic=topic, key=job.doc_key, value=job.model_dump()
-        )
+        await self._require().send_and_wait(topic=topic, key=job.doc_key, value=job.model_dump())
         logger.info(
             "Published job: doc_key={doc_key} type={dtype} attempt={attempt} topic={topic}",
             doc_key=job.doc_key,
@@ -84,9 +80,7 @@ class KafkaProducerService:
     async def publish_retry(self, job: ProcessingJob) -> None:
         """Publish a job to the ``<type>-retry`` topic for delayed reprocessing."""
         topic = topics.retry_topic(job.process_type)
-        await self._require().send_and_wait(
-            topic=topic, key=job.doc_key, value=job.model_dump()
-        )
+        await self._require().send_and_wait(topic=topic, key=job.doc_key, value=job.model_dump())
         logger.warning(
             "Scheduled retry: doc_key={doc_key} type={dtype} attempt={attempt} "
             "after={after} topic={topic}",
@@ -102,9 +96,7 @@ class KafkaProducerService:
         topic = topics.dlq_topic(job.process_type)
         payload = job.model_dump()
         payload["error"] = error
-        await self._require().send_and_wait(
-            topic=topic, key=job.doc_key, value=payload
-        )
+        await self._require().send_and_wait(topic=topic, key=job.doc_key, value=payload)
         logger.error(
             "Sent to DLQ: doc_key={doc_key} type={dtype} topic={topic} error={error}",
             doc_key=job.doc_key,

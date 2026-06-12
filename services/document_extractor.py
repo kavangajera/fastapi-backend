@@ -21,7 +21,7 @@ from typing import Any
 
 from loguru import logger
 
-from services import pdf_extractor, doc_extractor, excel_extractor
+from services import doc_extractor, excel_extractor, pdf_extractor
 
 SUPPORTED_EXTENSIONS = {"pdf", "docx", "doc", "xlsx", "xls"}
 

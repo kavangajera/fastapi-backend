@@ -28,8 +28,8 @@ from aiokafka import AIOKafkaConsumer
 from loguru import logger
 
 from core.config import settings
-from kafka_infra.messages import ProcessingResult
 from kafka_infra import topics
+from kafka_infra.messages import ProcessingResult
 
 
 class ResultBus:

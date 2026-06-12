@@ -1,110 +1,57 @@
-import asyncio
-from typing import List
+"""
+routes/invoice.py
+─────────────────
+Read-only invoice endpoints. Uploads go through `POST /documents/process`
+or the batch endpoint at `POST /pharmacy/{ph_id}/reconciliation` —
+they're the only routes that create invoices.
+"""
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
-from loguru import logger
-from sqlalchemy.orm import Session, selectinload
+from __future__ import annotations
 
-from core.config import settings
-from database import get_db
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from core.async_db import get_async_db
+from core.enums import UserRole
+from middlewares.auth import auth_incoming_req
 from models import Invoice
-from schemas.invoice import InvoiceResponse, InvoiceUploadSummary
-from services.invoice_service import count_pdf_pages, extract_invoice_from_pdf, store_invoice
+from models.pharmacy import Pharmacy
+from schemas.invoice import InvoiceResponse
+from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
 
-_invoice_processing_lock = asyncio.Lock()
 
-
-@router.post(
-    "/upload",
-    response_model=InvoiceUploadSummary,
-    status_code=status.HTTP_201_CREATED,
-    summary="Upload invoices (PDF)",
-)
-async def upload_invoices(
-    files: List[UploadFile] = File(..., description="Up to 10 PDF invoices"),
-    db: Session = Depends(get_db),
-):
-    if len(files) > settings.INVOICE_MAX_FILES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Max {settings.INVOICE_MAX_FILES} PDFs allowed per request.",
+async def _accessible_medical_store_ids(
+    db: AsyncSession, user: System_Internal_User_Schema
+) -> list[int] | None:
+    """Return the pharmacy IDs `user` can see, or None for ADMIN (no filter)."""
+    if user.role == UserRole.ADMIN:
+        return None
+    if user.role == UserRole.PHARMACY_OWNER:
+        result = await db.execute(
+            select(Pharmacy.medical_store_id).where(Pharmacy.user_id == user.user_id)
         )
-
-    async with _invoice_processing_lock:
-        invoices_created = 0
-        line_items_created = 0
-
-        for file in files:
-            if not file.filename or not file.filename.lower().endswith(".pdf"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Only PDF invoices are supported.",
-                )
-
-            file_bytes = await file.read()
-            if not file_bytes:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Uploaded file is empty.",
-                )
-
-            page_count = count_pdf_pages(file_bytes)
-            if page_count > settings.INVOICE_MAX_PAGES:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Invoice exceeds {settings.INVOICE_MAX_PAGES} pages: "
-                        f"{file.filename} has {page_count} pages."
-                    ),
-                )
-
-            logger.info(
-                "Invoice upload started: {filename} pages={pages}",
-                filename=file.filename,
-                pages=page_count,
-            )
-
-            try:
-                invoice_payload = extract_invoice_from_pdf(file_bytes, file.filename)
-                store_invoice(db, invoice_payload, file.filename, page_count)
-                db.commit()
-
-                invoices_created += 1
-                line_items_created += len(invoice_payload.line_items)
-            except Exception as exc:
-                db.rollback()
-                logger.exception("Invoice processing failed: {error}", error=exc)
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invoice processing failed: {exc}",
-                )
-
-    return InvoiceUploadSummary(
-        invoices_created=invoices_created,
-        line_items_created=line_items_created,
-    )
+        return [row[0] for row in result.all()]
+    # TECHNICIAN
+    return [user.medical_store_id] if user.medical_store_id else []
 
 
-@router.get(
-    "/",
-    response_model=List[InvoiceResponse],
-    summary="List invoices",
-)
-def list_invoices(
+@router.get("/", response_model=list[InvoiceResponse], summary="List invoices")
+async def list_invoices(
     skip: int = 0,
     limit: int = 50,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
-    return (
-        db.query(Invoice)
-        .options(selectinload(Invoice.line_items), selectinload(Invoice.summary))
-        .order_by(Invoice.id.desc())
-        .offset(skip)
-        .limit(limit)
-        .all()
-    )
+    stmt = select(Invoice).order_by(Invoice.id.desc()).offset(skip).limit(limit)
+    ph_ids = await _accessible_medical_store_ids(db, user)
+    if ph_ids is not None:
+        stmt = stmt.where(Invoice.medical_store_id.in_(ph_ids))
+    result = await db.execute(stmt)
+    return list(result.scalars().all())
 
 
 @router.get(
@@ -112,16 +59,17 @@ def list_invoices(
     response_model=InvoiceResponse,
     summary="Get invoice by ID",
 )
-def get_invoice(invoice_id: int, db: Session = Depends(get_db)):
-    invoice = (
-        db.query(Invoice)
-        .options(selectinload(Invoice.line_items), selectinload(Invoice.summary))
-        .filter(Invoice.id == invoice_id)
-        .first()
-    )
+async def get_invoice(
+    invoice_id: int,
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    result = await db.execute(select(Invoice).where(Invoice.id == invoice_id))
+    invoice = result.scalar_one_or_none()
     if not invoice:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Invoice {invoice_id} not found.",
         )
+    await ensure_pharmacy_access(db, user, invoice.medical_store_id)
     return invoice

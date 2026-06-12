@@ -1,10 +1,12 @@
+from __future__ import annotations
+
 import json
 import tempfile
-from typing import Optional, Iterable
+from collections.abc import Iterable
 
 import fitz
 from loguru import logger
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
 from models import Invoice, InvoiceLineItem, InvoiceSummary
@@ -20,7 +22,7 @@ def count_pdf_pages(file_bytes: bytes) -> int:
         doc.close()
 
 
-def _classify_ndc(raw_ndc: Optional[str]) -> tuple[Optional[str], Optional[str], bool]:
+def _classify_ndc(raw_ndc: str | None) -> tuple[str | None, str | None, bool]:
     if not raw_ndc:
         return None, None, False
 
@@ -83,6 +85,7 @@ def _log_invoice_payload(invoice_payload) -> None:
 
 
 def extract_invoice_from_pdf(file_bytes: bytes, filename: str):
+    """SYNC — runs the OCR / LLM pipeline. Callers should wrap in asyncio.to_thread."""
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp:
         tmp.write(file_bytes)
         tmp.flush()
@@ -99,10 +102,22 @@ def extract_invoice_from_pdf(file_bytes: bytes, filename: str):
         return invoice_payload
 
 
-def store_invoice(db: Session, invoice_payload, source_filename: str, page_count: int) -> Invoice:
+async def store_invoice(
+    db: AsyncSession,
+    invoice_payload,
+    *,
+    source_filename: str,
+    page_count: int,
+    medical_store_id: int,
+    document_id: int | None = None,
+    batch_id: int | None = None,
+) -> Invoice:
     raw_payload = json.dumps(invoice_payload.model_dump(), ensure_ascii=True)
 
     db_invoice = Invoice(
+        medical_store_id=medical_store_id,
+        document_id=document_id,
+        batch_id=batch_id,
         source_filename=source_filename,
         page_count=page_count,
         seller_name=invoice_payload.seller_name,
@@ -131,50 +146,53 @@ def store_invoice(db: Session, invoice_payload, source_filename: str, page_count
         raw_payload=raw_payload,
     )
     db.add(db_invoice)
-    db.flush()
+    await db.flush()
 
     for item in invoice_payload.line_items:
         ndc11, upc, verification_required = _classify_ndc(item.ndc)
-        db_item = InvoiceLineItem(
-            invoice_id=db_invoice.id,
-            line=item.line,
-            item_code=item.item_code,
-            raw_ndc=item.ndc,
-            ndc11=ndc11,
-            upc=upc,
-            lot_number=item.lot_number,
-            orig_order_qty=item.orig_order_qty,
-            order_qty=item.order_qty,
-            invoiced_qty=item.invoiced_qty,
-            uom=item.uom,
-            description=item.description,
-            size=item.size,
-            form=item.form,
-            unit_price=item.unit_price,
-            extended_price=item.extended_price,
-            awp=item.awp,
-            note_code=item.note_code,
-            verification_required=verification_required,
+        db.add(
+            InvoiceLineItem(
+                invoice_id=db_invoice.id,
+                line=item.line,
+                item_code=item.item_code,
+                raw_ndc=item.ndc,
+                ndc11=ndc11,
+                upc=upc,
+                lot_number=item.lot_number,
+                orig_order_qty=item.orig_order_qty,
+                order_qty=item.order_qty,
+                invoiced_qty=item.invoiced_qty,
+                uom=item.uom,
+                description=item.description,
+                size=item.size,
+                form=item.form,
+                unit_price=item.unit_price,
+                extended_price=item.extended_price,
+                awp=item.awp,
+                note_code=item.note_code,
+                verification_required=verification_required,
+            )
         )
-        db.add(db_item)
 
     summary = invoice_payload.summary or None
     if summary:
-        db_summary = InvoiceSummary(
-            invoice_id=db_invoice.id,
-            order_line_total=summary.order_line_total,
-            fuel_surcharge=summary.fuel_surcharge,
-            sub_total=summary.sub_total,
-            tax=summary.tax,
-            grand_total=summary.grand_total,
-            total_due_by=summary.total_due_by,
+        db.add(
+            InvoiceSummary(
+                invoice_id=db_invoice.id,
+                order_line_total=summary.order_line_total,
+                fuel_surcharge=summary.fuel_surcharge,
+                sub_total=summary.sub_total,
+                tax=summary.tax,
+                grand_total=summary.grand_total,
+                total_due_by=summary.total_due_by,
+            )
         )
-        db.add(db_summary)
 
     logger.info(
-        "Stored invoice: filename={filename} lines={lines}",
+        "Stored invoice: filename={filename} lines={lines} medical_store_id={ph}",
         filename=source_filename,
         lines=len(invoice_payload.line_items),
+        ph=medical_store_id,
     )
 
     return db_invoice

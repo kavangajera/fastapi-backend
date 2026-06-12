@@ -1,18 +1,18 @@
-from typing import Optional
 from pydantic import BaseModel, Field
+
 from schemas.user_get_output import UserGetOutput
 
 
 class PharmacyGetOutputSchema(BaseModel):
     """Pharmacy data returned by GET endpoints (list pharmacies, search, etc.)."""
 
-    pharmacy_id: int = Field(
+    medical_store_id: int = Field(
         ...,
-        alias="pharmacy_id",
+        alias="medical_store_id",
         description="Unique numeric identifier of the pharmacy.",
         examples=[2],
     )
-    pharmacy_owner: Optional[UserGetOutput] = Field(
+    pharmacy_owner: UserGetOutput | None = Field(
         default=None,
         alias="owner",
         description="Owner user details (populated when the endpoint joins user data). Null when not loaded.",

@@ -1,10 +1,11 @@
 from pydantic import ConfigDict, Field
 from pydantic_settings import BaseSettings
 
+
 class Settings(BaseSettings):
     FRONTEND_URL: str
     ENV: str = "development"
-    DATABASE_URL: str
+    DATABASE_URL: str  # mysql+asyncmy://... — used by the whole stack
     SECRET_KEY: str
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
@@ -49,7 +50,17 @@ class Settings(BaseSettings):
     DOCUMENT_STORAGE_DIR: str = "storage/documents"
     DOCUMENT_MAX_FILE_SIZE_MB: int = 50
 
+    # ── Validation engine ──────────────────────────────────────────
+    NDC_CACHE_TTL_DAYS: int = 7
+    NDC_CACHE_FORCE_REFRESH: bool = False
+    # Module D Tier-3 generic bounds.
+    DAYS_SUPPLY_RATE_MAX: float = 50.0  # qty/days > this → WARNING
+    DAYS_SUPPLY_RATE_MIN: float = 0.05  # qty/days < this → WARNING
+    # Module A — flag listings expiring within N days as INFO (not ERROR).
+    NDC_LISTING_EXPIRY_INFO_DAYS: int = 365
+
     model_config = ConfigDict(extra="forbid", env_file=".env")
+
 
 settings = Settings()
 print("SETTINGS LOADED:", settings.model_dump())

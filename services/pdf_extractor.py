@@ -41,7 +41,6 @@ from typing import Any
 import fitz  # PyMuPDF
 from loguru import logger
 
-
 # ────────────────────────────── regex constants ───────────────────────────────
 
 _NDC_RE = re.compile(r"\b(\d{11})\b")
@@ -50,7 +49,9 @@ _MONEY_RE = re.compile(r"\$\s*[\d,]+\.?\d*")
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[ \-]?\d{3}[ \-]?\d{4}")
 _PAT_NAME_RE = re.compile(r"([A-Z][A-Za-z'\-]+,\s*[A-Za-z'\-]+)")
 _STATE_ZIP_RE = re.compile(r"\b([A-Z]{2})\s+(\d{5}(?:\-\d{4})?)\b")
-_ADDR_KW_RE = re.compile(r"\b(AVE|BLVD|ST|RD|LN|DR|APT|FL|FLOOR|WAY|COURT|CT|PLACE|PL)\b", re.IGNORECASE)
+_ADDR_KW_RE = re.compile(
+    r"\b(AVE|BLVD|ST|RD|LN|DR|APT|FL|FLOOR|WAY|COURT|CT|PLACE|PL)\b", re.IGNORECASE
+)
 
 # "right-of-NDC" portion: qty  days  MM/DD/YYYY  rxno  ref  ...rest
 _RIGHT_RE = re.compile(
@@ -85,6 +86,7 @@ _SKIP_PREFIXES = (
 
 # ─────────────────────────────── helpers ──────────────────────────────────────
 
+
 def _parse_money(s: str | None) -> str | None:
     if not s:
         return None
@@ -102,11 +104,7 @@ def _safe_int(s: Any) -> int | None:
 
 
 def _is_detail_row(ln: str) -> bool:
-    return (
-        bool(_NDC_RE.search(ln))
-        and bool(_DATE_RE.search(ln))
-        and bool(_MONEY_RE.search(ln))
-    )
+    return bool(_NDC_RE.search(ln)) and bool(_DATE_RE.search(ln)) and bool(_MONEY_RE.search(ln))
 
 
 def _is_totals_boundary(ln: str) -> bool:
@@ -137,12 +135,13 @@ def _is_header_line(ln: str) -> bool:
         r"Page#:",
         r"Date:",
         r"Drug Name\s+NDC",
-        r"Inventory Bucket\s+Lot No/Exp Date"
+        r"Inventory Bucket\s+Lot No/Exp Date",
     ]
     return any(re.search(p, ln, re.IGNORECASE) for p in header_patterns)
 
 
 # ──────────────────────────── PDF text extraction ────────────────────────────
+
 
 def _extract_lines(pdf_bytes: bytes) -> list[str]:
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
@@ -160,6 +159,7 @@ def _extract_lines(pdf_bytes: bytes) -> list[str]:
 
 # ──────────────────────────── pharmacy header ─────────────────────────────────
 
+
 def _parse_pharmacy_header(full_text: str) -> dict[str, str]:
     hdr: dict[str, str] = {
         "pharmacy_name": "",
@@ -174,13 +174,16 @@ def _parse_pharmacy_header(full_text: str) -> dict[str, str]:
     if "Good Health Pharmacy" in full_text:
         hdr["pharmacy_name"] = "Good Health Pharmacy"
 
-    addr_m = re.search(r"1379-83 Nostrand Ave,?\s*Brooklyn,?\s*NY\s*11226", full_text, re.IGNORECASE)
+    addr_m = re.search(
+        r"1379-83 Nostrand Ave,?\s*Brooklyn,?\s*NY\s*11226", full_text, re.IGNORECASE
+    )
     if addr_m:
         hdr["address"] = addr_m.group(0).strip()
 
     ph_fax_m = re.search(
         r"Phone#\s*(\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4}).*?Fax#\s*(\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4})",
-        full_text, re.IGNORECASE,
+        full_text,
+        re.IGNORECASE,
     )
     if ph_fax_m:
         hdr["phone"] = ph_fax_m.group(1).strip()
@@ -203,14 +206,26 @@ def _parse_pharmacy_header(full_text: str) -> dict[str, str]:
 
 # ──────────────────────────── detail row parser ───────────────────────────────
 
+
 def _parse_detail_row(ln: str) -> dict[str, Any]:
     disp: dict[str, Any] = {
-        "qty_disp": None, "qty_ord": None, "days_supply": None,
-        "date_filled": None, "rx_no": None, "ref": None,
-        "pat_name": None, "pat_addr": None, "pat_phone": None,
-        "pres_name": None, "pres_addr": None, "pres_phone": None,
-        "price": None, "ins_paid": None, "ins_code": None,
-        "inventory_bucket": None, "lot_no_exp_date": None,
+        "qty_disp": None,
+        "qty_ord": None,
+        "days_supply": None,
+        "date_filled": None,
+        "rx_no": None,
+        "ref": None,
+        "pat_name": None,
+        "pat_addr": None,
+        "pat_phone": None,
+        "pres_name": None,
+        "pres_addr": None,
+        "pres_phone": None,
+        "price": None,
+        "ins_paid": None,
+        "ins_code": None,
+        "inventory_bucket": None,
+        "lot_no_exp_date": None,
     }
 
     ndc_m = _NDC_RE.search(ln)
@@ -248,6 +263,7 @@ def _parse_detail_row(ln: str) -> dict[str, Any]:
 
 
 # ──────────────────────────── look-ahead enrichment ──────────────────────────
+
 
 def _enrich_lookahead(lines: list[str], start_idx: int, disp: dict[str, Any]) -> None:
     """Fill pat_addr, pres_addr, phones, ins_code, qty_ord from lines after detail row."""
@@ -288,14 +304,16 @@ def _enrich_lookahead(lines: list[str], start_idx: int, disp: dict[str, Any]) ->
                         inventory_bucket = bucket_token
                         bucket_idx = post_tokens.index(bucket_token)
                         lot_tokens = [
-                            t for t in post_tokens[:bucket_idx]
+                            t
+                            for t in post_tokens[:bucket_idx]
                             if re.search(r"[\d/\-]", t) or (len(t) >= 3 and not t.isalpha())
                         ]
                         if lot_tokens:
                             lot_no_exp_date = " ".join(lot_tokens)
                     else:
                         lot_tokens = [
-                            t for t in post_tokens
+                            t
+                            for t in post_tokens
                             if re.search(r"[\d/\-]", t) or (len(t) >= 3 and not t.isalpha())
                         ]
                         if lot_tokens:
@@ -336,6 +354,7 @@ def _enrich_lookahead(lines: list[str], start_idx: int, disp: dict[str, Any]) ->
 
 
 # ──────────────────────────── totals block parser ─────────────────────────────
+
 
 def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
     """
@@ -425,6 +444,7 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
 
 # ──────────────────────────── grand total ────────────────────────────────────
 
+
 def _parse_grand_total(lines: list[str]) -> dict[str, str | None]:
     gt: dict[str, str | None] = {
         "total_price": None,
@@ -475,6 +495,7 @@ def _parse_grand_total(lines: list[str]) -> dict[str, str | None]:
 
 
 # ──────────────────────────── public API ─────────────────────────────────────
+
 
 def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
     """
@@ -548,7 +569,12 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
             if _is_detail_row(l2) or _is_totals_boundary(l2):
                 break
             # If it has specific data like date, money, NDC or phone, it's not a name continuation
-            if _DATE_RE.search(l2) or _MONEY_RE.search(l2) or _NDC_RE.search(l2) or _PHONE_RE.search(l2):
+            if (
+                _DATE_RE.search(l2)
+                or _MONEY_RE.search(l2)
+                or _NDC_RE.search(l2)
+                or _PHONE_RE.search(l2)
+            ):
                 break
             # Do not append lines that contain address markers
             if _STATE_ZIP_RE.search(l2) or _ADDR_KW_RE.search(l2):
@@ -591,20 +617,22 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
             (d.get("lot_no_exp_date") for d in dispenses if d.get("lot_no_exp_date")),
             None,
         )
-        medicines.append({
-            "drug_name": drug_name,
-            "ndc": ndc,
-            "inventory_bucket": inv_bucket,
-            "lot_no_exp_date": lot_no_exp,
-            "totals": {
-                "packs": t.get("packs"),
-                "total_ins_paid": t.get("total_ins_paid"),
-                "total_price": t.get("total_price"),
-                "total_cost": t.get("total_cost"),
-                "total_rx_count": t.get("total_rx_count"),
-            },
-            "dispenses": dispenses,
-        })
+        medicines.append(
+            {
+                "drug_name": drug_name,
+                "ndc": ndc,
+                "inventory_bucket": inv_bucket,
+                "lot_no_exp_date": lot_no_exp,
+                "totals": {
+                    "packs": t.get("packs"),
+                    "total_ins_paid": t.get("total_ins_paid"),
+                    "total_price": t.get("total_price"),
+                    "total_cost": t.get("total_cost"),
+                    "total_rx_count": t.get("total_rx_count"),
+                },
+                "dispenses": dispenses,
+            }
+        )
 
     total_dispenses = sum(len(m.get("dispenses", [])) for m in medicines)
     elapsed_ms = (time.perf_counter() - start_time) * 1000

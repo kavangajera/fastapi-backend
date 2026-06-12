@@ -58,17 +58,16 @@ import os
 import sys
 import tempfile
 from dataclasses import asdict, dataclass, field
-from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 from loguru import logger
 
-
 # ---------------------------------------------------------------------------
 # Data classes (mirror SQLAlchemy models)
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class DispenseRow:
@@ -116,6 +115,7 @@ class DrugReportRow:
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _str(v: Any) -> str | None:
     if v is None or (isinstance(v, float) and pd.isna(v)):
         return None
@@ -154,15 +154,13 @@ def _lot_no(raw: Any) -> str | None:
 
 
 def _is_blank_row(row: pd.Series) -> bool:
-    return all(
-        v is None or (isinstance(v, float) and pd.isna(v))
-        for v in row
-    )
+    return all(v is None or (isinstance(v, float) and pd.isna(v)) for v in row)
 
 
 # ---------------------------------------------------------------------------
 # Main parser
 # ---------------------------------------------------------------------------
+
 
 def parse_report(path: str | Path) -> DrugReportRow:
     path = Path(path)
@@ -216,12 +214,7 @@ def parse_report(path: str | Path) -> DrugReportRow:
         pat_name = _str(row[3])
         date_val = _date(row[5])
 
-        if (
-            col0
-            and col0 not in ("Total For:", "Grand Total:")
-            and ndc_candidate
-            and pat_name
-        ):
+        if col0 and col0 not in ("Total For:", "Grand Total:") and ndc_candidate and pat_name:
             drug_name = col0
             ndc = ndc_candidate
 
@@ -281,6 +274,7 @@ def parse_report(path: str | Path) -> DrugReportRow:
 # Public API — accepts raw bytes, returns the standard report dict
 # ---------------------------------------------------------------------------
 
+
 def _str_val(v: Any) -> str | None:
     """Convert a value to a string suitable for the standard dict, coercing None."""
     if v is None:
@@ -329,38 +323,42 @@ def extract_report_from_excel(file_bytes: bytes, filename: str) -> dict[str, Any
     for med in report.medicines:
         dispenses: list[dict[str, Any]] = []
         for d in med.dispenses:
-            dispenses.append({
-                "qty_disp": _str_val(d.qty_disp),
-                "qty_ord": _str_val(d.qty_ord),
-                "days_supply": _str_val(d.days_supply),
-                "date_filled": d.date_filled,
-                "rx_no": d.rx_no,
-                "ref": d.ref,
-                "pat_name": d.pat_name,
-                "pat_addr": d.pat_addr,
-                "pat_phone": d.pat_phone,
-                "pres_name": d.pres_name,
-                "pres_addr": d.pres_addr,
-                "pres_phone": d.pres_phone,
-                "price": _str_val(d.price),
-                "ins_paid": _str_val(d.ins_paid),
-                "ins_code": d.ins_code,
-            })
+            dispenses.append(
+                {
+                    "qty_disp": _str_val(d.qty_disp),
+                    "qty_ord": _str_val(d.qty_ord),
+                    "days_supply": _str_val(d.days_supply),
+                    "date_filled": d.date_filled,
+                    "rx_no": d.rx_no,
+                    "ref": d.ref,
+                    "pat_name": d.pat_name,
+                    "pat_addr": d.pat_addr,
+                    "pat_phone": d.pat_phone,
+                    "pres_name": d.pres_name,
+                    "pres_addr": d.pres_addr,
+                    "pres_phone": d.pres_phone,
+                    "price": _str_val(d.price),
+                    "ins_paid": _str_val(d.ins_paid),
+                    "ins_code": d.ins_code,
+                }
+            )
 
-        medicines.append({
-            "drug_name": med.drug_name,
-            "ndc": med.ndc,
-            "inventory_bucket": None,         # not available in Excel layout
-            "lot_no_exp_date": med.lot_no_exp_date,
-            "totals": {
-                "packs": _str_val(med.total_packs),
-                "total_ins_paid": _str_val(med.total_ins_paid),
-                "total_price": _str_val(med.total_price),
-                "total_cost": _str_val(med.total_cost),
-                "total_rx_count": _str_val(med.total_rx_count),
-            },
-            "dispenses": dispenses,
-        })
+        medicines.append(
+            {
+                "drug_name": med.drug_name,
+                "ndc": med.ndc,
+                "inventory_bucket": None,  # not available in Excel layout
+                "lot_no_exp_date": med.lot_no_exp_date,
+                "totals": {
+                    "packs": _str_val(med.total_packs),
+                    "total_ins_paid": _str_val(med.total_ins_paid),
+                    "total_price": _str_val(med.total_price),
+                    "total_cost": _str_val(med.total_cost),
+                    "total_rx_count": _str_val(med.total_rx_count),
+                },
+                "dispenses": dispenses,
+            }
+        )
 
     total_dispenses = sum(len(m["dispenses"]) for m in medicines)
     logger.info(
@@ -392,6 +390,7 @@ def extract_report_from_excel(file_bytes: bytes, filename: str) -> dict[str, Any
 # CLI entry point
 # ---------------------------------------------------------------------------
 
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python extract_pharmacy_report.py <report.xlsx|report.xls>")
@@ -404,27 +403,31 @@ def main():
 
     report = parse_report(path)
 
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Grand Total Price    : {report.grand_total_price}")
     print(f"Grand Total Rx Count : {report.grand_total_rx_count}")
     print(f"Grand Total Cost     : {report.grand_total_cost}")
     print(f"Total medicines      : {len(report.medicines)}")
     total_dispenses = sum(len(m.dispenses) for m in report.medicines)
     print(f"Total dispenses      : {total_dispenses}")
-    print(f"{'='*60}\n")
+    print(f"{'=' * 60}\n")
 
     for m in report.medicines:
         print(f"  Drug : {m.drug_name}")
         print(f"  NDC  : {m.ndc}")
         if m.lot_no_exp_date:
             print(f"  Lot  : {m.lot_no_exp_date}")
-        print(f"  Totals → packs={m.total_packs}, rx={m.total_rx_count}, "
-              f"ins_paid={m.total_ins_paid}, price={m.total_price}, cost={m.total_cost}")
+        print(
+            f"  Totals → packs={m.total_packs}, rx={m.total_rx_count}, "
+            f"ins_paid={m.total_ins_paid}, price={m.total_price}, cost={m.total_cost}"
+        )
         for d in m.dispenses:
-            print(f"    Rx#{d.rx_no} ref={d.ref} | {d.pat_name} | "
-                  f"qty_disp={d.qty_disp} qty_ord={d.qty_ord} days={d.days_supply} "
-                  f"filled={d.date_filled} | ins={d.ins_code} ins_paid={d.ins_paid} "
-                  f"price={d.price} | {d.pres_name}")
+            print(
+                f"    Rx#{d.rx_no} ref={d.ref} | {d.pat_name} | "
+                f"qty_disp={d.qty_disp} qty_ord={d.qty_ord} days={d.days_supply} "
+                f"filled={d.date_filled} | ins={d.ins_code} ins_paid={d.ins_paid} "
+                f"price={d.price} | {d.pres_name}"
+            )
         print()
 
     # Also dump full JSON
