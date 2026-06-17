@@ -23,6 +23,11 @@ class AccessTokenData(BaseModel):
 class LoginData(BaseModel):
     """Data returned after successful login — token + user info."""
 
+    refresh_token:str=Field(
+        ...,
+        description="JWT refresh token. Include in the Cookies.",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
+    )
     access_token: str = Field(
         ...,
         description="JWT access token. Include in the Authorization header as 'Bearer <token>'.",
