@@ -26,6 +26,7 @@ from schemas.save_invoice import (
     InvoiceSaveResponse,
 )
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.activity_service import build_search_blob, log_activity
 from services.inventory_service import add_invoice_quantities
 from services.invoice_service import _classify_ndc
 from services.pharmacy_authz import ensure_pharmacy_access
@@ -151,6 +152,30 @@ async def save_invoice(
             db,
             medical_store_id=body.medical_store_id,
             invoice_id=db_invoice.id,
+        )
+        await log_activity(
+            db,
+            medical_store_id=body.medical_store_id,
+            actor=user,
+            action="INVOICE_SAVED",
+            entity_type="invoice",
+            entity_id=db_invoice.id,
+            summary=(
+                f"Purchased from {body.seller_name or 'unknown supplier'} "
+                f"({len(body.line_items)} line items, invoice {body.invoice_number or '—'})"
+            ),
+            wholesaler_name=body.seller_name,
+            search_blob=build_search_blob(
+                *(li.description for li in body.line_items),
+                *(li.ndc11 or li.ndc for li in body.line_items),
+            ),
+            meta={
+                "line_items": len(body.line_items),
+                "invoice_number": body.invoice_number,
+                "invoice_date": body.invoice_date,
+                "grand_total": body.summary.grand_total if body.summary else None,
+                "inventory_updates": len(inventory_updates_raw),
+            },
         )
         await db.commit()
     except SQLAlchemyError as exc:

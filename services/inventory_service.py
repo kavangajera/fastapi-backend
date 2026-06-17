@@ -20,7 +20,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,11 +73,14 @@ async def _upsert_delta(
     delta: Decimal,
     product_name: str | None,
     last_invoice_id: int | None,
+    exp_date: str | None = None,
 ) -> Decimal:
     """
     `INSERT ... ON DUPLICATE KEY UPDATE` against medicine_inventory.
 
-    Returns the new quantity after the upsert.
+    Returns the new quantity after the upsert. `exp_date` is only ever set
+    from a scanned barcode/QR; a NULL passed here leaves any existing value
+    untouched (so a later non-scanned invoice doesn't wipe a known expiry).
     """
     stmt = mysql_insert(MedicineInventory).values(
         medical_store_id=medical_store_id,
@@ -85,12 +88,15 @@ async def _upsert_delta(
         product_name=product_name,
         quantity=delta,
         last_invoice_id=last_invoice_id,
+        exp_date=exp_date,
     )
     stmt = stmt.on_duplicate_key_update(
         quantity=MedicineInventory.quantity + stmt.inserted.quantity,
         # Keep an existing product_name if we now have None; otherwise prefer the new one.
         product_name=stmt.inserted.product_name,
         last_invoice_id=stmt.inserted.last_invoice_id,
+        # Refresh expiry only when this line actually carried a scanned value.
+        exp_date=func.coalesce(stmt.inserted.exp_date, MedicineInventory.exp_date),
     )
     await session.execute(stmt)
 
@@ -139,6 +145,8 @@ async def add_invoice_quantities(
             delta=qty,
             product_name=item.description,
             last_invoice_id=invoice_id,
+            # Only present when this line was enriched from a barcode/QR scan.
+            exp_date=item.dm_expiration_date,
         )
         updates.append({"code": code, "delta": str(qty), "new_quantity": str(new_qty)})
 
@@ -211,6 +219,83 @@ async def get_inventory(session: AsyncSession, *, medical_store_id: int) -> list
         .order_by(MedicineInventory.code.asc())
     )
     return list(rows.scalars().all())
+
+
+async def search_inventory(
+    session: AsyncSession,
+    *,
+    medical_store_id: int,
+    q: str | None = None,
+    only_negative: bool = False,
+    skip: int = 0,
+    limit: int = 50,
+) -> tuple[list[MedicineInventory], int]:
+    """
+    Filtered, paginated inventory. `q` matches code OR product_name.
+    Returns (rows, total_count).
+    """
+    filters = [MedicineInventory.medical_store_id == medical_store_id]
+    if q:
+        like = f"%{q}%"
+        filters.append(
+            MedicineInventory.code.ilike(like) | MedicineInventory.product_name.ilike(like)
+        )
+    if only_negative:
+        filters.append(MedicineInventory.quantity < 0)
+
+    total = (
+        await session.execute(select(func.count(MedicineInventory.id)).where(*filters))
+    ).scalar() or 0
+
+    rows = await session.execute(
+        select(MedicineInventory)
+        .where(*filters)
+        .order_by(MedicineInventory.code.asc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(rows.scalars().all()), total
+
+
+async def adjust_inventory(
+    session: AsyncSession,
+    *,
+    medical_store_id: int,
+    code: str,
+    product_name: str | None = None,
+    quantity: Decimal | None = None,
+    exp_date: str | None = None,
+) -> tuple[MedicineInventory | None, dict]:
+    """
+    Direct manual edit of an existing inventory row (no invoice/dispense).
+
+    Only fields that are not None are changed. `quantity` is SET (absolute
+    correction), not added. Returns (row, before/after diff). Returns
+    (None, {}) if the row does not exist.
+    """
+    res = await session.execute(
+        select(MedicineInventory).where(
+            MedicineInventory.medical_store_id == medical_store_id,
+            MedicineInventory.code == code,
+        )
+    )
+    row = res.scalar_one_or_none()
+    if row is None:
+        return None, {}
+
+    diff: dict = {}
+    if product_name is not None and product_name != row.product_name:
+        diff["product_name"] = {"before": row.product_name, "after": product_name}
+        row.product_name = product_name
+    if quantity is not None and quantity != row.quantity:
+        diff["quantity"] = {"before": str(row.quantity), "after": str(quantity)}
+        row.quantity = quantity
+    if exp_date is not None and exp_date != row.exp_date:
+        diff["exp_date"] = {"before": row.exp_date, "after": exp_date}
+        row.exp_date = exp_date
+
+    await session.flush()
+    return row, diff
 
 
 # Exported for the save routes that need to look up an existing invoice

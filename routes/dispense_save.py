@@ -26,12 +26,23 @@ from models import Dispense, DrugReport, Medicine
 from schemas.save_dispense import DispenseSaveRequest, DispenseSaveResponse
 from schemas.save_invoice import InventoryUpdate
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.activity_service import build_search_blob, log_activity
 from services.inventory_service import subtract_dispense_quantities
 from services.pharmacy_authz import ensure_pharmacy_access
 from services.report_service import _build_dispense, _to_decimal, _to_int
 from services.validation import validate_tier1, validate_tier2
 
 router = APIRouter(tags=["Dispense Reports"])
+
+
+def _alerts_by_medicine(validation) -> dict[int, list[dict]]:
+    """Group ERROR-severity alerts by their `medicine_index`."""
+    grouped: dict[int, list[dict]] = {}
+    for alert in validation.alerts:
+        if alert.severity != "ERROR" or alert.medicine_index is None:
+            continue
+        grouped.setdefault(alert.medicine_index, []).append(alert.model_dump(mode="json"))
+    return grouped
 
 
 @router.post(
@@ -59,7 +70,9 @@ async def save_dispense_report(
     report_data = body.model_dump(mode="json")
     tier1 = validate_tier1(report_data)
     validation = await validate_tier2(db, report_data, tier1_report=tier1)
-    if validation.summary.blocking:
+
+    # Block only when there are errors AND the owner has not opted to force-save.
+    if validation.summary.blocking and not body.force_save:
         logger.info(
             "Dispense save blocked: ms_id={p} errors={e} warnings={w}",
             p=body.medical_store_id,
@@ -72,11 +85,15 @@ async def save_dispense_report(
                 "status_code": 422,
                 "message": (
                     f"Dispense save blocked by {validation.summary.errors} validation "
-                    "error(s). Fix the listed issues and resubmit."
+                    "error(s). Fix the listed issues and resubmit, or set "
+                    "`force_save: true` to persist anyway."
                 ),
                 "data": validation.model_dump(mode="json"),
             },
         )
+
+    forced = validation.summary.blocking and body.force_save
+    errors_by_med = _alerts_by_medicine(validation) if forced else {}
 
     # ── Persist ─────────────────────────────────────────────────────
     db_report = DrugReport(
@@ -88,13 +105,24 @@ async def save_dispense_report(
         grand_total_rx_count=_to_int(body.grand_total.total_rx_count),
         grand_total_price=_to_decimal(body.grand_total.total_price),
         grand_total_cost=_to_decimal(body.grand_total.total_cost),
+        force_saved=forced,
+        error_count=validation.summary.errors if forced else 0,
+        validation_errors=(
+            [a.model_dump(mode="json") for a in validation.alerts if a.severity == "ERROR"]
+            if forced
+            else None
+        ),
     )
     db.add(db_report)
     await db.flush()
 
     total_dispenses = 0
-    for med_in in body.medicines:
+    medicines_with_errors = 0
+    for idx, med_in in enumerate(body.medicines):
         totals = med_in.totals
+        med_errors = errors_by_med.get(idx)
+        if med_errors:
+            medicines_with_errors += 1
         db_med = Medicine(
             report_id=db_report.id,
             drug_name=med_in.drug_name,
@@ -106,6 +134,8 @@ async def save_dispense_report(
             total_ins_paid=_to_decimal(totals.total_ins_paid) if totals else None,
             total_price=_to_decimal(totals.total_price) if totals else None,
             total_cost=_to_decimal(totals.total_cost) if totals else None,
+            has_errors=bool(med_errors),
+            validation_errors=med_errors,
         )
         db.add(db_med)
         await db.flush()
@@ -121,6 +151,34 @@ async def save_dispense_report(
             db,
             medical_store_id=body.medical_store_id,
             drug_report_id=db_report.id,
+        )
+        await log_activity(
+            db,
+            medical_store_id=body.medical_store_id,
+            actor=user,
+            action="DISPENSE_FORCE_SAVED" if forced else "DISPENSE_SAVED",
+            entity_type="drug_report",
+            entity_id=db_report.id,
+            summary=(
+                f"{'Force-saved' if forced else 'Saved'} dispense report "
+                f"({len(body.medicines)} medicines, {total_dispenses} dispenses)"
+                + (f" with {validation.summary.errors} error(s)" if forced else "")
+            ),
+            search_blob=build_search_blob(
+                *(m.drug_name for m in body.medicines),
+                *(m.ndc for m in body.medicines),
+            ),
+            error_count=validation.summary.errors if forced else 0,
+            meta={
+                "medicines": len(body.medicines),
+                "dispenses": total_dispenses,
+                "medicines_with_errors": medicines_with_errors,
+                "rx_count": _to_int(body.grand_total.total_rx_count),
+                "total_price": body.grand_total.total_price,
+                "report_from_date": body.pharmacy.report_from_date,
+                "report_to_date": body.pharmacy.report_to_date,
+                "warnings": validation.summary.warnings,
+            },
         )
         await db.commit()
     except SQLAlchemyError as exc:
@@ -145,6 +203,8 @@ async def save_dispense_report(
         medical_store_id=body.medical_store_id,
         medicines_saved=len(body.medicines),
         dispenses_saved=total_dispenses,
+        force_saved=forced,
+        medicines_with_errors=medicines_with_errors,
         inventory_updates=[InventoryUpdate(**u) for u in inventory_updates_raw],
         validation=validation,
     )

@@ -46,6 +46,10 @@ class MedicineInventory(Base):
     code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     product_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
+    # Expiry shown in the UI ONLY when it came from a scanned barcode/QR
+    # (InvoiceLineItem.dm_expiration_date). NULL when never scanned.
+    exp_date: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
     # Signed Decimal — quantity can go negative when dispense outpaces
     # known invoices. The save routes never reject; the UI surfaces it.
     quantity: Mapped[Decimal] = mapped_column(

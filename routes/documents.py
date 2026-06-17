@@ -40,6 +40,7 @@ from schemas.document_schemas import (
     DocumentUploadResponse,
 )
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.activity_service import log_activity
 from services.document_storage import document_storage
 from services.pharmacy_authz import ensure_pharmacy_access
 
@@ -189,6 +190,22 @@ async def process_document(
         progress=progress,
     )
     db.add(db_doc)
+    await db.flush()
+    await log_activity(
+        db,
+        medical_store_id=medical_store_id,
+        actor=user,
+        action="DOCUMENT_UPLOADED",
+        entity_type="document",
+        entity_id=db_doc.id,
+        summary=f"Uploaded {process_type.value} document '{primary_name}'",
+        meta={
+            "doc_key": doc_key,
+            "process_type": process_type.value,
+            "original_filename": primary_name,
+            "file_count": len(parsed),
+        },
+    )
     try:
         await db.commit()
         await db.refresh(db_doc)

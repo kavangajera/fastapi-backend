@@ -78,6 +78,10 @@ class DispenseSaveRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     medical_store_id: int
     document_id: int | None = None
+    # Persist even when validation finds blocking (ERROR) alerts. The errors
+    # are still recorded on the report and per-medicine row so the audit
+    # report can surface them. Inventory is updated regardless.
+    force_save: bool = False
     pharmacy: DispensePharmacyMeta = DispensePharmacyMeta()
     grand_total: DispenseGrandTotal = DispenseGrandTotal()
     medicines: list[MedicineInput]
@@ -89,5 +93,7 @@ class DispenseSaveResponse(BaseModel):
     medical_store_id: int
     medicines_saved: int
     dispenses_saved: int
+    force_saved: bool = False
+    medicines_with_errors: int = 0
     inventory_updates: list[InventoryUpdate]
     validation: ValidationReport

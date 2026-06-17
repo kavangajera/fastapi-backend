@@ -12,6 +12,8 @@ from kafka_infra import topics
 from kafka_infra.producer import kafka_producer
 from kafka_infra.result_bus import result_bus
 from routes import router
+from routes.activity import router as activity_router
+from routes.audit_report import router as audit_report_router
 from routes.dispense_save import router as dispense_save_router
 from routes.dispense_validate import router as dispense_validate_router
 from routes.documents import router as documents_router
@@ -20,6 +22,7 @@ from routes.invoice import router as invoice_router
 from routes.invoice_save import router as invoice_save_router
 from routes.monitor import router as monitor_router
 from routes.pharmacy_purchase_report import router as report_router
+from routes.refills import router as refills_router
 
 setup_logging()
 
@@ -170,6 +173,9 @@ app.include_router(invoice_save_router)
 app.include_router(dispense_save_router)
 app.include_router(dispense_validate_router)
 app.include_router(inventory_router)
+app.include_router(activity_router)
+app.include_router(audit_report_router)
+app.include_router(refills_router)
 app.include_router(monitor_router)
 
 

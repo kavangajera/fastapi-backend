@@ -15,6 +15,8 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    JSON,
+    Boolean,
     ForeignKey,
     Integer,
     Numeric,
@@ -49,6 +51,13 @@ class DrugReport(Base):
     grand_total_rx_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     grand_total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     grand_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    # Set when the owner force-saves past blocking validation errors. The
+    # full blocking-alert list is stashed in `validation_errors` so the
+    # audit report can replay exactly what was wrong at save time.
+    force_saved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    error_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    validation_errors: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     medicines: Mapped[list["Medicine"]] = relationship(
         "Medicine",
@@ -85,6 +94,11 @@ class Medicine(Base):
     total_ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     total_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    # Per-row validation errors captured on force-save (the alerts whose
+    # `medicine_index` pointed at this medicine). NULL when the row was clean.
+    has_errors: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    validation_errors: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     report: Mapped["DrugReport"] = relationship("DrugReport", back_populates="medicines")
     dispenses: Mapped[list["Dispense"]] = relationship(
