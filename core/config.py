@@ -63,4 +63,3 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
-print("SETTINGS LOADED:", settings.model_dump())

@@ -8,6 +8,8 @@ Mirrors the dispense extractor's output shape (services/document_extractor).
 
 from __future__ import annotations
 
+from typing import Any
+
 from pydantic import BaseModel, ConfigDict
 
 from schemas.save_invoice import InventoryUpdate
@@ -85,6 +87,13 @@ class DispenseSaveRequest(BaseModel):
     pharmacy: DispensePharmacyMeta = DispensePharmacyMeta()
     grand_total: DispenseGrandTotal = DispenseGrandTotal()
     medicines: list[MedicineInput]
+
+    # `/documents/process` embeds Tier-1 validation results in the `data`
+    # block it returns. The UI copies that whole block into this save
+    # request; we accept-but-ignore — the save route re-validates from
+    # scratch on every submit, so any embedded report is just a stale
+    # echo of the prior run.
+    validation: Any | None = None
 
 
 class DispenseSaveResponse(BaseModel):
