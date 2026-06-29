@@ -18,9 +18,17 @@ from core.async_db import get_async_db
 from core.config import settings
 from core.enums import DocumentStatus
 from kafka_infra import topics
+from middlewares.auth import require_admin
 from models.document import Document
 
-router = APIRouter(prefix="/api/monitor", tags=["Monitoring"])
+# System-wide monitoring data (spans every pharmacy: documents, logs,
+# pipeline config, host metrics). Gated to authenticated ADMIN users via a
+# router-level dependency so every current and future endpoint is covered.
+router = APIRouter(
+    prefix="/api/monitor",
+    tags=["Monitoring"],
+    dependencies=[Depends(require_admin)],
+)
 
 
 async def _count(db: AsyncSession, stmt) -> int:
