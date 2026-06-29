@@ -46,6 +46,15 @@ async def login_user(
     return success_response(res, "Login successful")
 
 
+async def app_login_user(
+    user: Login_Input_User_Schema,
+    response: Response,
+    db: AsyncSession = Depends(get_async_db),
+):
+    res = await user_service.login_user(user, response, db, include_password_hash=True)
+    return success_response(res, "Login successful")
+
+
 async def renew_access_token(
     req: Request,
     db: AsyncSession = Depends(get_async_db),

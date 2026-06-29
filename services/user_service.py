@@ -79,7 +79,12 @@ async def create_user(user: Signup_Input_User_Schema, db: AsyncSession):
     return _to_user_output(user_model)
 
 
-async def login_user(user: Login_Input_User_Schema, response: Response, db: AsyncSession):
+async def login_user(
+    user: Login_Input_User_Schema,
+    response: Response,
+    db: AsyncSession,
+    include_password_hash: bool = False,
+):
     ph = PasswordHasher()
 
     try:
@@ -129,7 +134,7 @@ async def login_user(user: Login_Input_User_Schema, response: Response, db: Asyn
         logger.error("Unexpected error during login: {err}", err=str(exc))
         _raise_error(500, "Something went wrong during login")
 
-    return {
+    data = {
         "access_token": access_token,
         "refresh_token":refresh_token,
         "id": user_from_db.user_id,
@@ -144,6 +149,12 @@ async def login_user(user: Login_Input_User_Schema, response: Response, db: Asyn
         "IsActive": user_from_db.IsActive,
         "IsLogout": user_from_db.IsLogout,
     }
+    # /app/login returns the stored Argon2id password hash so the mobile
+    # app can verify credentials offline (the hash is self-describing —
+    # salt + params are embedded — so no server secret is needed on-device).
+    if include_password_hash:
+        data["password_hash"] = user_from_db.password_hash
+    return data
 
 
 # Impersonation access tokens are minted by an ADMIN to view the app as another

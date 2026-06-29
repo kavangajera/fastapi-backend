@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from schemas.response_models import (
+    AppLoginResponse,
     ImpersonationResponse,
     LoginResponse,
     PharmacyCreateResponse,
@@ -28,6 +29,7 @@ from .pharmacy import (
     update_pharmacy,
 )
 from .user import (
+    app_login_user,
     create_technician,
     create_user,
     delete_me,
@@ -84,6 +86,27 @@ router.add_api_route(
     ),
     response_model=LoginResponse,
     operation_id="login_user",
+)
+
+router.add_api_route(
+    "/app/login",
+    endpoint=app_login_user,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="App login — returns the password hash for offline login",
+    description=(
+        "Same as `POST /user/login`, but the response **also includes the stored "
+        "Argon2id password hash** (`data.password_hash`).\n\n"
+        "**No authentication required.**\n\n"
+        "Intended for the mobile app's **offline login**: the app stores the hash "
+        "on-device and verifies the password locally with Argon2id when there is no "
+        "network. The hash is self-describing (salt + parameters are embedded in the "
+        "PHC string), so no server secret is needed to verify it.\n\n"
+        "⚠️ Returns a password hash — serve only over HTTPS and store it encrypted "
+        "on the device."
+    ),
+    response_model=AppLoginResponse,
+    operation_id="app_login_user",
 )
 
 router.add_api_route(

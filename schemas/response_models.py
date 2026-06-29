@@ -45,6 +45,19 @@ class LoginData(AuditFields, UserStateFields):
     )
 
 
+class AppLoginData(LoginData):
+    """``POST /app/login`` data — login payload plus the password hash for offline login."""
+
+    password_hash: str = Field(
+        ...,
+        description=(
+            "Argon2id PHC hash of the user's password (salt + params embedded). "
+            "Stored on-device so the app can verify the password offline."
+        ),
+        examples=["$argon2id$v=19$m=65536,t=3,p=4$c29tZXNhbHQ$<hash>"],
+    )
+
+
 class UserData(AuditFields, UserStateFields):
     """User data returned after signup, update, or profile retrieval."""
 
@@ -117,6 +130,16 @@ class LoginResponse(BaseModel):
             }
         }
     }
+
+
+class AppLoginResponse(BaseModel):
+    """``POST /app/login`` — like login, but also returns the password hash for offline login."""
+
+    status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
+    message: str = Field(..., description="Result summary.", examples=["Login successful"])
+    data: AppLoginData = Field(
+        ..., description="Login payload plus the Argon2id password hash for on-device offline login."
+    )
 
 
 class ImpersonationData(AuditFields, UserStateFields):
