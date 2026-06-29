@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
 
 from core.enums import UserRole
+from schemas.audit_fields import AuditFields
+from schemas.user_state_fields import UserStateFields
 
 
-class UserOutput(BaseModel):
+class UserOutput(AuditFields, UserStateFields):
     """Frontend-facing user output — internal DB field names are hidden via aliases."""
 
     id: int = Field(

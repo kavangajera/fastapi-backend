@@ -4,6 +4,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_fields import AuditFields
+
 
 class InvoiceLineItemBase(BaseModel):
     line: str | None = None
@@ -35,7 +37,7 @@ class InvoiceLineItemBase(BaseModel):
     dm_lot_number: str | None = None
 
 
-class InvoiceLineItemResponse(InvoiceLineItemBase):
+class InvoiceLineItemResponse(InvoiceLineItemBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -51,7 +53,7 @@ class InvoiceSummaryBase(BaseModel):
     total_due_by: str | None = None
 
 
-class InvoiceSummaryResponse(InvoiceSummaryBase):
+class InvoiceSummaryResponse(InvoiceSummaryBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -91,7 +93,7 @@ class InvoiceBase(BaseModel):
     remit_to_phone: str | None = None
 
 
-class InvoiceResponse(InvoiceBase):
+class InvoiceResponse(InvoiceBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int

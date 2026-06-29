@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field
 
 from core.enums import UserRole
+from schemas.audit_fields import AuditFields
+from schemas.user_state_fields import UserStateFields
 
 
-class UserGetOutput(BaseModel):
+class UserGetOutput(AuditFields, UserStateFields):
     """User data returned by GET endpoints (list users, get profile, etc.)."""
 
     user_id: int = Field(

@@ -86,6 +86,11 @@ async def audit_report(
             error_message=d.error_message,
             retry_count=d.retry_count,
             created_at=d.created_at,
+            record_Identifier=d.record_Identifier,
+            update_record_Identifier=d.update_record_Identifier,
+            IsDeleted=d.IsDeleted,
+            updated_at=d.updated_at,
+            global_time_at=d.global_time_at,
         )
         for d in failed_docs
     ]
@@ -119,6 +124,11 @@ async def audit_report(
                     ndc=med.ndc,
                     errors=med.validation_errors or [],
                     created_at=rep.created_at,
+                    record_Identifier=med.record_Identifier,
+                    update_record_Identifier=med.update_record_Identifier,
+                    IsDeleted=med.IsDeleted,
+                    updated_at=med.updated_at,
+                    global_time_at=med.global_time_at,
                 )
             )
 

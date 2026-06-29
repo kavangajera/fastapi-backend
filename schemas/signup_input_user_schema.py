@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from schemas.audit_input import AuditInputFields
 
 
-class Signup_Input_User_Schema(BaseModel):
+class Signup_Input_User_Schema(AuditInputFields):
     """
     Registration payload for creating a new **PHARMACY_OWNER** account.
 
@@ -26,6 +28,8 @@ class Signup_Input_User_Schema(BaseModel):
             "example": {
                 "user_email": "user2@gmail.com",
                 "input_password": "123456",
+                "record_Identifier": "AN001111111USR000001",
+                "update_record_Identifier": None,
             }
         }
     }

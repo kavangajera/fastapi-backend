@@ -9,6 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.enums import UserRole
 from models.pharmacy import Pharmacy
 from models.user import User
+from schemas.audit_input import (
+    apply_record_identifier_on_create,
+    apply_record_identifier_on_update,
+)
 from schemas.pharmacy_input_schema import Pharmacy_Input_Schema
 from schemas.pharmacy_output import PharmacyOutput
 from schemas.pharmacy_update_input import PharmacyUpdateInput
@@ -44,6 +48,7 @@ async def create_pharmacy(
         address=input_for_pharmacy.pharmacy_location,
         user_id=owner_from_db.user_id,
     )
+    apply_record_identifier_on_create(new_pharmacy, input_for_pharmacy)
 
     try:
         db.add(new_pharmacy)
@@ -120,6 +125,8 @@ async def update_pharmacy(
     if "pharmacy_location" in update_fields:
         pharmacy.address = update_fields["pharmacy_location"]
 
+    apply_record_identifier_on_update(pharmacy, update_data)
+
     try:
         await db.commit()
         await db.refresh(pharmacy)
@@ -148,7 +155,7 @@ async def delete_pharmacy(
         _raise_error(403, "You can only delete your own pharmacy")
 
     try:
-        await db.delete(pharmacy)
+        pharmacy.IsDeleted = True
         await db.commit()
     except SQLAlchemyError as exc:
         await db.rollback()

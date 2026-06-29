@@ -10,8 +10,11 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_fields import AuditFields
+from schemas.audit_input import AuditInputFields
 
-class InventoryRow(BaseModel):
+
+class InventoryRow(AuditFields):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     code: str
@@ -32,7 +35,7 @@ class InventoryListResponse(BaseModel):
     limit: int = 0
 
 
-class InventoryAdjustRequest(BaseModel):
+class InventoryAdjustRequest(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
 
     # All optional — only provided fields are changed. `quantity` is an

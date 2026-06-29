@@ -28,10 +28,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class MedicineInventory(Base):
+class MedicineInventory(AuditMixin, Base):
     __tablename__ = "medicine_inventory"
 
     __table_args__ = (UniqueConstraint("medical_store_id", "code", name="uq_inventory_store_code"),)

@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.async_db import get_async_db
 from core.enums import UserRole
 from middlewares.auth import auth_incoming_req
+from schemas.audit_input import apply_record_identifier_on_update
 from schemas.inventory import InventoryAdjustRequest, InventoryListResponse, InventoryRow
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
@@ -33,6 +34,11 @@ def _to_row(r) -> InventoryRow:
         exp_date=r.exp_date,
         last_invoice_id=r.last_invoice_id,
         updated_at=r.updated_at,
+        record_Identifier=r.record_Identifier,
+        update_record_Identifier=r.update_record_Identifier,
+        IsDeleted=r.IsDeleted,
+        created_at=r.created_at,
+        global_time_at=r.global_time_at,
     )
 
 
@@ -107,6 +113,8 @@ async def update_inventory(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"status_code": 404, "message": f"No inventory row for code '{code}'", "data": None},
         )
+
+    apply_record_identifier_on_update(row, body)
 
     if diff:
         await log_activity(

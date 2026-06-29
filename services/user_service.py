@@ -22,6 +22,10 @@ from schemas.signup_input_user_schema import Signup_Input_User_Schema
 from schemas.signup_input_user_technician_schema import (
     Signup_Input_User_Technician_Schema,
 )
+from schemas.audit_input import (
+    apply_record_identifier_on_create,
+    apply_record_identifier_on_update,
+)
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from schemas.token_data_schemas import TokenData
 from schemas.user_output import UserOutput
@@ -58,6 +62,7 @@ async def create_user(user: Signup_Input_User_Schema, db: AsyncSession):
         contact_number="1234567890",
         password_hash=ph.hash(user.input_password),
     )
+    apply_record_identifier_on_create(user_model, user)
     try:
         db.add(user_model)
         await db.commit()
@@ -99,6 +104,9 @@ async def login_user(user: Login_Input_User_Schema, response: Response, db: Asyn
         refresh_token_for_db = RefreshToken(
             token=ph.hash(refresh_token), user_id=user_from_db.user_id
         )
+        # On successful login the account is active and no longer logged out.
+        user_from_db.IsActive = 1
+        user_from_db.IsLogout = 0
         db.add(refresh_token_for_db)
         await db.commit()
 
@@ -127,6 +135,69 @@ async def login_user(user: Login_Input_User_Schema, response: Response, db: Asyn
         "id": user_from_db.user_id,
         "email": user_from_db.email,
         "role": user_from_db.role.value,
+        "record_Identifier": user_from_db.record_Identifier,
+        "update_record_Identifier": user_from_db.update_record_Identifier,
+        "IsDeleted": user_from_db.IsDeleted,
+        "created_at": user_from_db.created_at,
+        "updated_at": user_from_db.updated_at,
+        "global_time_at": user_from_db.global_time_at,
+        "IsActive": user_from_db.IsActive,
+        "IsLogout": user_from_db.IsLogout,
+    }
+
+
+# Impersonation access tokens are minted by an ADMIN to view the app as another
+# user. They are intentionally longer-lived than the default 5-minute access
+# token (no refresh cookie is issued cross-domain), but still expire so the
+# elevated session cannot live forever.
+IMPERSONATION_TOKEN_EXPIRE_MINUTES = 60
+
+
+async def impersonate_user(
+    target_user_id: int,
+    db: AsyncSession,
+    admin: System_Internal_User_Schema,
+    medical_store_id: int | None = None,
+):
+    if admin.role != UserRole.ADMIN:
+        _raise_error(403, "Only admins can impersonate other users")
+
+    result = await db.execute(select(User).where(User.user_id == target_user_id))
+    target = result.scalar_one_or_none()
+    if not target:
+        _raise_error(404, "Target user not found")
+
+    # If a pharmacy was chosen, make sure it actually belongs to the target user
+    # (owner) so the admin can't be redirected into a store the user can't access.
+    if medical_store_id is not None:
+        ph_result = await db.execute(
+            select(Pharmacy).where(Pharmacy.medical_store_id == medical_store_id)
+        )
+        pharmacy = ph_result.scalar_one_or_none()
+        if not pharmacy:
+            _raise_error(404, "Pharmacy not found")
+        if pharmacy.user_id != target.user_id:
+            _raise_error(400, "Selected pharmacy does not belong to the target user")
+
+    access_token = create_access_token(
+        {"username": target.username, "user_id": target.user_id},
+        expires_minutes=IMPERSONATION_TOKEN_EXPIRE_MINUTES,
+    )
+
+    return {
+        "access_token": access_token,
+        "id": target.user_id,
+        "email": target.email,
+        "role": target.role.value,
+        "medical_store_id": medical_store_id,
+        "record_Identifier": target.record_Identifier,
+        "update_record_Identifier": target.update_record_Identifier,
+        "IsDeleted": target.IsDeleted,
+        "created_at": target.created_at,
+        "updated_at": target.updated_at,
+        "global_time_at": target.global_time_at,
+        "IsActive": target.IsActive,
+        "IsLogout": target.IsLogout,
     }
 
 
@@ -164,6 +235,27 @@ async def generate_new_access_token(req: Request, db: AsyncSession):
     return {"access_token": access_token}
 
 
+# ================= LOGOUT =================
+
+
+async def logout_user(db: AsyncSession, current_user: System_Internal_User_Schema):
+    """Mark the current user as logged out (sets ``IsLogout = 1``)."""
+    result = await db.execute(select(User).where(User.user_id == current_user.user_id))
+    user_from_db = result.scalar_one_or_none()
+    if not user_from_db:
+        _raise_error(404, "User not found")
+
+    user_from_db.IsLogout = 1
+    try:
+        await db.commit()
+    except SQLAlchemyError as exc:
+        await db.rollback()
+        logger.error("Failed to log out user: {err}", err=str(exc))
+        _raise_error(500, "Failed to log out")
+
+    return None
+
+
 # ================= CREATE TECHNICIAN =================
 
 
@@ -194,6 +286,7 @@ async def create_technician(
         role=UserRole.TECHNICIAN,
         medical_store_id=pharmacy.medical_store_id,
     )
+    apply_record_identifier_on_create(user_model, technician)
 
     try:
         db.add(user_model)
@@ -275,6 +368,8 @@ async def update_user(
     if "phone" in update_fields:
         user_from_db.contact_number = update_fields["phone"]
 
+    apply_record_identifier_on_update(user_from_db, update_data)
+
     try:
         await db.commit()
         await db.refresh(user_from_db)
@@ -314,7 +409,7 @@ async def delete_user(
         _raise_error(403, "Use /user/delete/me to delete your own account")
 
     try:
-        await db.delete(user_from_db)
+        user_from_db.IsDeleted = True
         await db.commit()
     except SQLAlchemyError as exc:
         await db.rollback()
@@ -345,6 +440,8 @@ async def update_self(
     if "phone" in update_fields:
         user_from_db.contact_number = update_fields["phone"]
 
+    apply_record_identifier_on_update(user_from_db, update_data)
+
     try:
         await db.commit()
         await db.refresh(user_from_db)
@@ -366,7 +463,7 @@ async def delete_self(
         _raise_error(404, "User not found")
 
     try:
-        await db.delete(user_from_db)
+        user_from_db.IsDeleted = True
         await db.commit()
     except SQLAlchemyError as exc:
         await db.rollback()

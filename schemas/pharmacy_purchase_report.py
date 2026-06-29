@@ -14,6 +14,8 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from schemas.audit_fields import AuditFields
+
 
 # ---------------------------------------------------------------------------
 # Dispense schemas
@@ -36,7 +38,7 @@ class DispenseBase(BaseModel):
     ins_code: str | None = None
 
 
-class DispenseResponse(DispenseBase):
+class DispenseResponse(DispenseBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -58,7 +60,7 @@ class MedicineBase(BaseModel):
     total_cost: Decimal | None = None
 
 
-class MedicineResponse(MedicineBase):
+class MedicineResponse(MedicineBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -81,7 +83,7 @@ class DrugReportBase(BaseModel):
     grand_total_cost: Decimal | None = None
 
 
-class DrugReportResponse(DrugReportBase):
+class DrugReportResponse(DrugReportBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
@@ -89,7 +91,7 @@ class DrugReportResponse(DrugReportBase):
     medicines: list[MedicineResponse] = []
 
 
-class DrugReportListItem(BaseModel):
+class DrugReportListItem(AuditFields):
     """Lightweight summary for the list endpoint."""
 
     model_config = ConfigDict(from_attributes=True)

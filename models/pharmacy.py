@@ -1,10 +1,10 @@
 from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class Pharmacy(Base):
+class Pharmacy(AuditMixin, Base):
     # NB: the Python identifier stays `Pharmacy` because every existing
     # caller, schema, and route uses that name. Only the *table* is
     # renamed to `medical_store` to reflect the real-world entity

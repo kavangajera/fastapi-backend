@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from schemas.audit_input import AuditInputFields
 
 
-class PharmacyUpdateInput(BaseModel):
+class PharmacyUpdateInput(AuditInputFields):
     """
     Partial-update payload for an existing pharmacy.
 
@@ -25,6 +27,8 @@ class PharmacyUpdateInput(BaseModel):
             "example": {
                 "pharmacy_title": "Deva's Health Hub",
                 "pharmacy_location": "456 Wellness Ave, Pune",
+                "record_Identifier": None,
+                "update_record_Identifier": "AN001111111STO000002",
             }
         }
     }

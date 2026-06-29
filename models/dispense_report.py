@@ -26,10 +26,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class DrugReport(Base):
+class DrugReport(AuditMixin, Base):
     __tablename__ = "drug_reports"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -73,7 +73,7 @@ class DrugReport(Base):
         )
 
 
-class Medicine(Base):
+class Medicine(AuditMixin, Base):
     __tablename__ = "medicines"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -112,7 +112,7 @@ class Medicine(Base):
         return f"<Medicine id={self.id} ndc={self.ndc!r} drug={self.drug_name!r}>"
 
 
-class Dispense(Base):
+class Dispense(AuditMixin, Base):
     __tablename__ = "dispenses"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

@@ -11,8 +11,10 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_fields import AuditFields
 
-class ActivityRow(BaseModel):
+
+class ActivityRow(AuditFields):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
     id: int

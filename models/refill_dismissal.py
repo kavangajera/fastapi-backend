@@ -28,10 +28,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class RefillDismissal(Base):
+class RefillDismissal(AuditMixin, Base):
     __tablename__ = "refill_dismissals"
 
     __table_args__ = (

@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from schemas.audit_input import AuditInputFields
 
 
-class Pharmacy_Input_Schema(BaseModel):
+class Pharmacy_Input_Schema(AuditInputFields):
     """
     Payload for creating a new pharmacy.
 
@@ -25,6 +27,8 @@ class Pharmacy_Input_Schema(BaseModel):
             "example": {
                 "pharmacy_title": "MediCare Pharmacy",
                 "pharmacy_location": "123 Health Street, Mumbai",
+                "record_Identifier": "AN001111111STO000002",
+                "update_record_Identifier": None,
             }
         }
     }

@@ -19,10 +19,10 @@ from sqlalchemy import Boolean, DateTime, String, Text, func
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class MedicineNdcCache(Base):
+class MedicineNdcCache(AuditMixin, Base):
     __tablename__ = "medicine_ndc_cache"
 
     ndc11: Mapped[str] = mapped_column(String(11), primary_key=True)

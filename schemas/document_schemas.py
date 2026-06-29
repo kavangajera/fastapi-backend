@@ -11,6 +11,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from schemas.audit_fields import AuditFields
+
 
 class DocumentUploadResponse(BaseModel):
     """
@@ -29,7 +31,7 @@ class DocumentUploadResponse(BaseModel):
     error: str | None = None
 
 
-class DocumentStatusResponse(BaseModel):
+class DocumentStatusResponse(AuditFields):
     """Full status view of a single document."""
 
     doc_key: str

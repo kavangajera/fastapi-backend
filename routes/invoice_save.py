@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import Invoice, InvoiceLineItem, InvoiceSummary
+from schemas.audit_input import apply_record_identifier_on_create
 from schemas.save_invoice import (
     InventoryUpdate,
     InvoiceLineItemInput,
@@ -94,55 +95,56 @@ async def save_invoice(
         remit_to_phone=body.remit_to_phone,
         raw_payload=body.model_dump_json(),
     )
+    apply_record_identifier_on_create(db_invoice, body)
     db.add(db_invoice)
     await db.flush()
 
     for item in body.line_items:
         ndc11, upc, verification_required = _resolve_ndc_fields(item)
-        db.add(
-            InvoiceLineItem(
-                invoice_id=db_invoice.id,
-                line=item.line,
-                item_code=item.item_code,
-                raw_ndc=item.raw_ndc or item.ndc,
-                ndc11=ndc11,
-                upc=upc,
-                lot_number=item.lot_number,
-                orig_order_qty=item.orig_order_qty,
-                order_qty=item.order_qty,
-                invoiced_qty=item.invoiced_qty,
-                uom=item.uom,
-                description=item.description,
-                size=item.size,
-                form=item.form,
-                unit_price=item.unit_price,
-                extended_price=item.extended_price,
-                awp=item.awp,
-                note_code=item.note_code,
-                verification_required=verification_required,
-                fda_package_ndc=item.fda_package_ndc,
-                fda_ndc11=item.fda_ndc11,
-                dm_gtin=item.dm_gtin,
-                dm_serial_number=item.dm_serial_number,
-                dm_expiration_date=item.dm_expiration_date,
-                dm_lot_number=item.dm_lot_number,
-                verified=bool(item.verified) if item.verified is not None else False,
-            )
+        line_item = InvoiceLineItem(
+            invoice_id=db_invoice.id,
+            line=item.line,
+            item_code=item.item_code,
+            raw_ndc=item.raw_ndc or item.ndc,
+            ndc11=ndc11,
+            upc=upc,
+            lot_number=item.lot_number,
+            orig_order_qty=item.orig_order_qty,
+            order_qty=item.order_qty,
+            invoiced_qty=item.invoiced_qty,
+            uom=item.uom,
+            description=item.description,
+            size=item.size,
+            form=item.form,
+            unit_price=item.unit_price,
+            extended_price=item.extended_price,
+            awp=item.awp,
+            note_code=item.note_code,
+            verification_required=verification_required,
+            fda_package_ndc=item.fda_package_ndc,
+            fda_ndc11=item.fda_ndc11,
+            dm_gtin=item.dm_gtin,
+            dm_serial_number=item.dm_serial_number,
+            dm_expiration_date=item.dm_expiration_date,
+            dm_lot_number=item.dm_lot_number,
+            verified=bool(item.verified) if item.verified is not None else False,
         )
+        apply_record_identifier_on_create(line_item, item)
+        db.add(line_item)
 
     summary_saved = False
     if body.summary is not None:
-        db.add(
-            InvoiceSummary(
-                invoice_id=db_invoice.id,
-                order_line_total=body.summary.order_line_total,
-                fuel_surcharge=body.summary.fuel_surcharge,
-                sub_total=body.summary.sub_total,
-                tax=body.summary.tax,
-                grand_total=body.summary.grand_total,
-                total_due_by=body.summary.total_due_by,
-            )
+        invoice_summary = InvoiceSummary(
+            invoice_id=db_invoice.id,
+            order_line_total=body.summary.order_line_total,
+            fuel_surcharge=body.summary.fuel_surcharge,
+            sub_total=body.summary.sub_total,
+            tax=body.summary.tax,
+            grand_total=body.summary.grand_total,
+            total_due_by=body.summary.total_due_by,
         )
+        apply_record_identifier_on_create(invoice_summary, body.summary)
+        db.add(invoice_summary)
         summary_saved = True
 
     await db.flush()

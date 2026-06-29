@@ -151,5 +151,5 @@ async def delete_report(
             detail=f"Report {report_id} not found.",
         )
     await ensure_pharmacy_access(db, user, report.medical_store_id)
-    await db.delete(report)
+    report.IsDeleted = True
     await db.commit()

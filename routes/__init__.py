@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from schemas.response_models import (
+    ImpersonationResponse,
     LoginResponse,
     PharmacyCreateResponse,
     PharmacyDeleteResponse,
@@ -36,11 +37,14 @@ from .user import (
     get_technicians,
     get_user_by_email,
     get_users_by_role,
+    impersonate_user,
     login_user,
+    logout_user,
     renew_access_token,
     update_me,
     update_user,
 )
+from schemas.response_schema import Response_Schema
 
 router = APIRouter()
 
@@ -97,6 +101,41 @@ router.add_api_route(
     ),
     response_model=TokenRenewResponse,
     operation_id="renew_access_token",
+)
+
+router.add_api_route(
+    "/user/logout",
+    endpoint=logout_user,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="Log out the current user",
+    description=(
+        "Marks the authenticated user as logged out by setting their "
+        "`IsLogout` flag to `1`.\n\n"
+        "🔒 **Requires Bearer token.** Works for all roles."
+    ),
+    response_model=Response_Schema,
+    operation_id="logout_user",
+)
+
+
+router.add_api_route(
+    "/user/impersonate",
+    endpoint=impersonate_user,
+    methods=["POST"],
+    tags=["Admin"],
+    summary="Issue an impersonation token for another user",
+    description=(
+        "Mints a JWT access token scoped to **another user** so a Super Admin can view "
+        "the QueueRx app as that user.\n\n"
+        "🔒 **Requires Bearer token.** 🛡️ **ADMIN only** — returns 403 for other roles.\n\n"
+        "- Optionally pass `medical_store_id` to pre-select one of the target user's "
+        "pharmacies; it is validated to belong to the target user.\n"
+        "- The token is longer-lived than a normal login token but still expires; no "
+        "refresh cookie is issued."
+    ),
+    response_model=ImpersonationResponse,
+    operation_id="impersonate_user",
 )
 
 

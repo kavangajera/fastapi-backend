@@ -14,8 +14,10 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_input import AuditInputFields
 
-class InvoiceLineItemInput(BaseModel):
+
+class InvoiceLineItemInput(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
 
     line: str | None = None
@@ -49,7 +51,7 @@ class InvoiceLineItemInput(BaseModel):
     verified: bool | None = None
 
 
-class InvoiceSummaryInput(BaseModel):
+class InvoiceSummaryInput(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
 
     order_line_total: str | None = None
@@ -60,7 +62,7 @@ class InvoiceSummaryInput(BaseModel):
     total_due_by: str | None = None
 
 
-class InvoiceSaveRequest(BaseModel):
+class InvoiceSaveRequest(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
 
     medical_store_id: int

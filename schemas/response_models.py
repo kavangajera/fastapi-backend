@@ -7,6 +7,9 @@ that Swagger/OpenAPI shows the **exact** shape of ``data`` instead of ``Any``.
 
 from pydantic import BaseModel, Field
 
+from schemas.audit_fields import AuditFields
+from schemas.user_state_fields import UserStateFields
+
 # ───────────────────── Data sub-models ─────────────────────
 
 
@@ -20,7 +23,7 @@ class AccessTokenData(BaseModel):
     )
 
 
-class LoginData(BaseModel):
+class LoginData(AuditFields, UserStateFields):
     """Data returned after successful login — token + user info."""
 
     refresh_token:str=Field(
@@ -42,7 +45,7 @@ class LoginData(BaseModel):
     )
 
 
-class UserData(BaseModel):
+class UserData(AuditFields, UserStateFields):
     """User data returned after signup, update, or profile retrieval."""
 
     id: int = Field(..., description="Unique user identifier.", examples=[4])
@@ -54,7 +57,7 @@ class UserData(BaseModel):
     )
 
 
-class PharmacyData(BaseModel):
+class PharmacyData(AuditFields):
     """Pharmacy data returned by CRUD endpoints."""
 
     id: int = Field(..., description="Unique pharmacy identifier.", examples=[2])
@@ -110,6 +113,46 @@ class LoginResponse(BaseModel):
                     "id": 4,
                     "email": "user2@gmail.com",
                     "role": "OWNER",
+                },
+            }
+        }
+    }
+
+
+class ImpersonationData(AuditFields, UserStateFields):
+    """Data returned when an ADMIN mints an impersonation token for another user."""
+
+    access_token: str = Field(
+        ...,
+        description="JWT access token scoped to the impersonated user.",
+        examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
+    )
+    id: int = Field(..., description="ID of the impersonated user.", examples=[4])
+    email: str = Field(..., description="Email of the impersonated user.", examples=["user2@gmail.com"])
+    role: str = Field(..., description="Role of the impersonated user.", examples=["OWNER"])
+    medical_store_id: int | None = Field(
+        None, description="Pre-selected pharmacy ID for the session, if provided.", examples=[2]
+    )
+
+
+class ImpersonationResponse(BaseModel):
+    """``POST /user/impersonate`` — issues an access token for another user (Admin only)."""
+
+    status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
+    message: str = Field(..., description="Result summary.", examples=["Impersonation token issued"])
+    data: ImpersonationData = Field(..., description="Impersonation token and target user info.")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "status_code": 200,
+                "message": "Impersonation token issued",
+                "data": {
+                    "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                    "id": 4,
+                    "email": "user2@gmail.com",
+                    "role": "OWNER",
+                    "medical_store_id": 2,
                 },
             }
         }

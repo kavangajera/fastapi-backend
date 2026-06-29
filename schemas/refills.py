@@ -10,8 +10,10 @@ from datetime import date
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_fields import AuditFields
 
-class RefillRow(BaseModel):
+
+class RefillRow(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
     patient_key: str
@@ -27,7 +29,7 @@ class RefillRow(BaseModel):
     status: str  # OVERDUE | DUE_SOON | OK | UNKNOWN
 
 
-class RefillListResponse(BaseModel):
+class RefillListResponse(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
     medical_store_id: int

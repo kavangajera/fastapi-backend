@@ -5,13 +5,13 @@ from sqlalchemy import Boolean, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
 # ---------------------------------------------------------------------------
 # invoices
 # ---------------------------------------------------------------------------
-class Invoice(Base):
+class Invoice(AuditMixin, Base):
     __tablename__ = "invoices"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -77,7 +77,7 @@ class Invoice(Base):
 # ---------------------------------------------------------------------------
 # invoice_line_items
 # ---------------------------------------------------------------------------
-class InvoiceLineItem(Base):
+class InvoiceLineItem(AuditMixin, Base):
     __tablename__ = "invoice_line_items"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -119,7 +119,7 @@ class InvoiceLineItem(Base):
 # ---------------------------------------------------------------------------
 # invoice_summaries
 # ---------------------------------------------------------------------------
-class InvoiceSummary(Base):
+class InvoiceSummary(AuditMixin, Base):
     __tablename__ = "invoice_summaries"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

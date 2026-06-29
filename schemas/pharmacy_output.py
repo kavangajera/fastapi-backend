@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 
+from schemas.audit_fields import AuditFields
 from schemas.user_output import UserOutput
 
 
-class PharmacyOutput(BaseModel):
+class PharmacyOutput(AuditFields, BaseModel):
     """Frontend-facing pharmacy output — internal DB field names hidden via aliases."""
 
     id: int = Field(

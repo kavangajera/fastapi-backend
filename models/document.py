@@ -24,10 +24,10 @@ from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class Document(Base):
+class Document(AuditMixin, Base):
     __tablename__ = "documents"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)

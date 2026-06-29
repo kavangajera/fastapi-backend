@@ -1,9 +1,10 @@
 from pydantic import BaseModel, Field
 
+from schemas.audit_fields import AuditFields
 from schemas.user_get_output import UserGetOutput
 
 
-class PharmacyGetOutputSchema(BaseModel):
+class PharmacyGetOutputSchema(AuditFields, BaseModel):
     """Pharmacy data returned by GET endpoints (list pharmacies, search, etc.)."""
 
     medical_store_id: int = Field(

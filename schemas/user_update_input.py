@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from schemas.audit_input import AuditInputFields
 
 
-class UserUpdateInput(BaseModel):
+class UserUpdateInput(AuditInputFields):
     """
     Partial-update payload for a user profile.
 
@@ -32,6 +34,8 @@ class UserUpdateInput(BaseModel):
                 "name": "UpdatedUser2",
                 "user_email": "updated_user2@gmail.com",
                 "phone": "9876543210",
+                "record_Identifier": None,
+                "update_record_Identifier": "AN001111111USR000004",
             }
         }
     }

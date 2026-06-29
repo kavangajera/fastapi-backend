@@ -1,10 +1,10 @@
 from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class RefreshToken(Base):
+class RefreshToken(AuditMixin, Base):
     __tablename__ = "refresh_tokens"
 
     refresh_token_id: Mapped[int] = mapped_column(

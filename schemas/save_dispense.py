@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_input import AuditInputFields
 from schemas.save_invoice import InventoryUpdate
 from schemas.validation import ValidationReport
 
@@ -32,7 +33,7 @@ class DispenseGrandTotal(BaseModel):
     total_cost: str | None = None
 
 
-class DispenseLineInput(BaseModel):
+class DispenseLineInput(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
     qty_disp: str | None = None
     qty_ord: str | None = None
@@ -64,7 +65,7 @@ class MedicineTotalsInput(BaseModel):
     total_cost: str | None = None
 
 
-class MedicineInput(BaseModel):
+class MedicineInput(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
     drug_name: str
     ndc: str
@@ -74,7 +75,7 @@ class MedicineInput(BaseModel):
     dispenses: list[DispenseLineInput] = []
 
 
-class DispenseSaveRequest(BaseModel):
+class DispenseSaveRequest(AuditInputFields):
     model_config = ConfigDict(extra="forbid")
     medical_store_id: int
     document_id: int | None = None

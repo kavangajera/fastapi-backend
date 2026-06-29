@@ -12,6 +12,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from schemas.audit_fields import AuditFields
+
 
 class AuditSummary(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -24,7 +26,7 @@ class AuditSummary(BaseModel):
     total_validation_errors: int = 0
 
 
-class ParsingError(BaseModel):
+class ParsingError(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
     document_id: int
@@ -37,7 +39,7 @@ class ParsingError(BaseModel):
     created_at: datetime
 
 
-class ValidationErrorRow(BaseModel):
+class ValidationErrorRow(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
     report_id: int
@@ -51,7 +53,7 @@ class ValidationErrorRow(BaseModel):
     created_at: datetime
 
 
-class AuditReportResponse(BaseModel):
+class AuditReportResponse(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
     medical_store_id: int

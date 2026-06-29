@@ -1,7 +1,9 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
+
+from schemas.audit_input import AuditInputFields
 
 
-class Signup_Input_User_Technician_Schema(BaseModel):
+class Signup_Input_User_Technician_Schema(AuditInputFields):
     """
     Registration payload for creating a new **TECHNICIAN** account.
 
@@ -43,6 +45,8 @@ class Signup_Input_User_Technician_Schema(BaseModel):
                 "input_password": "123456",
                 "contact": "1234567890",
                 "medical_store_id": 2,
+                "record_Identifier": "AN001111111USR000012",
+                "update_record_Identifier": None,
             }
         }
     }

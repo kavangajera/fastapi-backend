@@ -31,10 +31,10 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from core.async_db import Base
+from core.async_db import AuditMixin, Base
 
 
-class ActivityLog(Base):
+class ActivityLog(AuditMixin, Base):
     __tablename__ = "activity_log"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
