@@ -28,6 +28,7 @@ from schemas.pharmacy_purchase_report import (
     DrugReportResponse,
     MedicineResponse,
 )
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.pharmacy_authz import ensure_pharmacy_access
 
@@ -52,7 +53,7 @@ async def _accessible_medical_store_ids(
 
 @router.get(
     "/",
-    response_model=list[DrugReportListItem],
+    response_model=Response_Schema,
     summary="List dispense reports (pharmacy-scoped for non-admin)",
 )
 async def list_reports(
@@ -66,7 +67,8 @@ async def list_reports(
     if ph_ids is not None:
         stmt = stmt.where(DrugReport.medical_store_id.in_(ph_ids))
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    reports = [DrugReportListItem.model_validate(r) for r in result.scalars().all()]
+    return success_response(reports, "Reports retrieved successfully")
 
 
 # ── GET /reports/{report_id} ──────────────────────────────────────────────────
@@ -74,7 +76,7 @@ async def list_reports(
 
 @router.get(
     "/{report_id:int}",
-    response_model=DrugReportResponse,
+    response_model=Response_Schema,
     summary="Get a full dispense report",
 )
 async def get_report(
@@ -90,7 +92,9 @@ async def get_report(
             detail=f"Report {report_id} not found.",
         )
     await ensure_pharmacy_access(db, user, report.medical_store_id)
-    return report
+    return success_response(
+        DrugReportResponse.model_validate(report), "Report retrieved successfully"
+    )
 
 
 # ── GET /reports/{report_id}/medicines/{ndc} ──────────────────────────────────
@@ -98,7 +102,7 @@ async def get_report(
 
 @router.get(
     "/{report_id:int}/medicines/{ndc}",
-    response_model=MedicineResponse,
+    response_model=Response_Schema,
     summary="Get a specific medicine (by NDC) within a report",
 )
 async def get_medicine_by_ndc(
@@ -127,7 +131,9 @@ async def get_medicine_by_ndc(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Medicine with NDC {ndc} not found in report {report_id}.",
         )
-    return med
+    return success_response(
+        MedicineResponse.model_validate(med), "Medicine retrieved successfully"
+    )
 
 
 # ── DELETE /reports/{report_id} ───────────────────────────────────────────────
@@ -135,7 +141,7 @@ async def get_medicine_by_ndc(
 
 @router.delete(
     "/{report_id:int}",
-    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=Response_Schema,
     summary="Delete a report and all its associated data",
 )
 async def delete_report(
@@ -153,3 +159,4 @@ async def delete_report(
     await ensure_pharmacy_access(db, user, report.medical_store_id)
     report.IsDeleted = True
     await db.commit()
+    return success_response(None, "Report deleted successfully")

@@ -16,9 +16,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
+from schemas.response_schema import Response_Schema, success_response
 from schemas.save_dispense import DispenseSaveRequest
 from schemas.system_internal_user_schema import System_Internal_User_Schema
-from schemas.validation import ValidationReport
 from services.pharmacy_authz import ensure_pharmacy_access
 from services.validation import validate_tier1, validate_tier2
 
@@ -27,7 +27,7 @@ router = APIRouter(tags=["Dispense Reports"])
 
 @router.post(
     "/dispenses/validate",
-    response_model=ValidationReport,
+    response_model=Response_Schema,
     summary="Validate a dispense JSON (Tier-1 + FDA Tier-2). No DB write.",
     description=(
         "Runs the full validation engine and returns the alert report. Use "
@@ -41,8 +41,9 @@ async def validate_dispense(
     body: DispenseSaveRequest,
     db: AsyncSession = Depends(get_async_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
-) -> ValidationReport:
+) -> Response_Schema:
     await ensure_pharmacy_access(db, user, body.medical_store_id)
     report_data = body.model_dump(mode="json")
     tier1 = validate_tier1(report_data)
-    return await validate_tier2(db, report_data, tier1_report=tier1)
+    report = await validate_tier2(db, report_data, tier1_report=tier1)
+    return success_response(report, "Validation completed")

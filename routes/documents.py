@@ -39,6 +39,7 @@ from schemas.document_schemas import (
     DocumentStatusResponse,
     DocumentUploadResponse,
 )
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
 from services.document_storage import document_storage
@@ -116,7 +117,7 @@ async def _read_and_validate_file(
 
 @router.post(
     "/process",
-    response_model=DocumentUploadResponse,
+    response_model=Response_Schema,
     summary="Upload a document for extraction (no DB write of domain rows)",
     description=(
         "Upload a file (or 2 images for `barcode`) tied to a "
@@ -250,11 +251,15 @@ async def process_document(
         result = await asyncio.wait_for(future, timeout=settings.PROCESSING_RESULT_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
         result_bus.unregister(doc_key)
-        return DocumentUploadResponse(
-            doc_key=doc_key,
-            process_type=process_type.value,
-            status=DocumentStatus.QUEUED.value,
-            message=("Still processing. Poll GET /documents/{doc_key} for the result."),
+        return success_response(
+            DocumentUploadResponse(
+                doc_key=doc_key,
+                process_type=process_type.value,
+                status=DocumentStatus.QUEUED.value,
+                message=("Still processing. Poll GET /documents/{doc_key} for the result."),
+            ),
+            "Still processing. Poll GET /documents/{doc_key} for the result.",
+            status_code=202,
         )
     except asyncio.CancelledError as exc:
         result_bus.unregister(doc_key)
@@ -264,20 +269,26 @@ async def process_document(
         ) from exc
 
     if result.status == DocumentStatus.COMPLETED.value:
-        return DocumentUploadResponse(
+        return success_response(
+            DocumentUploadResponse(
+                doc_key=doc_key,
+                process_type=process_type.value,
+                status=result.status,
+                message="Document processed successfully.",
+                data=result.result_data,
+            ),
+            "Document processed successfully.",
+        )
+
+    return success_response(
+        DocumentUploadResponse(
             doc_key=doc_key,
             process_type=process_type.value,
             status=result.status,
-            message="Document processed successfully.",
-            data=result.result_data,
-        )
-
-    return DocumentUploadResponse(
-        doc_key=doc_key,
-        process_type=process_type.value,
-        status=result.status,
-        message="Document processing failed after all retries.",
-        error=result.error,
+            message="Document processing failed after all retries.",
+            error=result.error,
+        ),
+        "Document processing failed after all retries.",
     )
 
 
@@ -286,7 +297,7 @@ async def process_document(
 
 @router.get(
     "/{doc_key}",
-    response_model=DocumentStatusResponse,
+    response_model=Response_Schema,
     summary="Check document processing status",
 )
 async def get_document_status(
@@ -302,7 +313,9 @@ async def get_document_status(
             detail=f"Document '{doc_key}' not found.",
         )
     await ensure_pharmacy_access(db, user, doc.medical_store_id)
-    return doc
+    return success_response(
+        DocumentStatusResponse.model_validate(doc), "Document retrieved successfully"
+    )
 
 
 # ── GET /documents/ ─────────────────────────────────────────────────────────
@@ -310,7 +323,7 @@ async def get_document_status(
 
 @router.get(
     "/",
-    response_model=DocumentListResponse,
+    response_model=Response_Schema,
     summary="List documents (pharmacy-scoped for non-admin)",
 )
 async def list_documents(
@@ -338,4 +351,7 @@ async def list_documents(
 
     total = (await db.execute(count_stmt)).scalar() or 0
     docs = (await db.execute(base.offset(skip).limit(limit))).scalars().all()
-    return DocumentListResponse(documents=docs, total=total)
+    return success_response(
+        DocumentListResponse(documents=docs, total=total),
+        "Documents retrieved successfully",
+    )

@@ -18,6 +18,7 @@ from middlewares.auth import auth_incoming_req
 from models import Invoice
 from models.pharmacy import Pharmacy
 from schemas.invoice import InvoiceResponse
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.pharmacy_authz import ensure_pharmacy_access
 
@@ -39,7 +40,7 @@ async def _accessible_medical_store_ids(
     return [user.medical_store_id] if user.medical_store_id else []
 
 
-@router.get("/", response_model=list[InvoiceResponse], summary="List invoices")
+@router.get("/", response_model=Response_Schema, summary="List invoices")
 async def list_invoices(
     skip: int = 0,
     limit: int = 50,
@@ -51,12 +52,13 @@ async def list_invoices(
     if ph_ids is not None:
         stmt = stmt.where(Invoice.medical_store_id.in_(ph_ids))
     result = await db.execute(stmt)
-    return list(result.scalars().all())
+    invoices = [InvoiceResponse.model_validate(i) for i in result.scalars().all()]
+    return success_response(invoices, "Invoices retrieved successfully")
 
 
 @router.get(
     "/{invoice_id:int}",
-    response_model=InvoiceResponse,
+    response_model=Response_Schema,
     summary="Get invoice by ID",
 )
 async def get_invoice(
@@ -72,4 +74,6 @@ async def get_invoice(
             detail=f"Invoice {invoice_id} not found.",
         )
     await ensure_pharmacy_access(db, user, invoice.medical_store_id)
-    return invoice
+    return success_response(
+        InvoiceResponse.model_validate(invoice), "Invoice retrieved successfully"
+    )

@@ -26,3 +26,12 @@ class Response_Schema(BaseModel):
         None,
         description="Response payload — contains the requested resource(s) on success, or null on error.",
     )
+
+
+def success_response(
+    data: Any = None, message: str = "Success", status_code: int = 200
+) -> Response_Schema:
+    """Build the standard success envelope. Mirrors the local helpers in
+    ``routes/user.py`` / ``routes/pharmacy.py`` so every route can share one
+    implementation."""
+    return Response_Schema(status_code=status_code, message=message, data=data)

@@ -20,6 +20,7 @@ from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import Invoice, InvoiceLineItem, InvoiceSummary
 from schemas.audit_input import apply_record_identifier_on_create
+from schemas.response_schema import Response_Schema, success_response
 from schemas.save_invoice import (
     InventoryUpdate,
     InvoiceLineItemInput,
@@ -47,7 +48,7 @@ def _resolve_ndc_fields(item: InvoiceLineItemInput) -> tuple[str | None, str | N
 
 @router.post(
     "/invoices",
-    response_model=InvoiceSaveResponse,
+    response_model=Response_Schema,
     status_code=status.HTTP_201_CREATED,
     summary="Persist an invoice JSON and update inventory (+qty)",
     description=(
@@ -193,10 +194,14 @@ async def save_invoice(
         u=len(inventory_updates_raw),
     )
 
-    return InvoiceSaveResponse(
-        invoice_id=db_invoice.id,
-        medical_store_id=body.medical_store_id,
-        line_items_created=len(body.line_items),
-        summary_saved=summary_saved,
-        inventory_updates=[InventoryUpdate(**u) for u in inventory_updates_raw],
+    return success_response(
+        InvoiceSaveResponse(
+            invoice_id=db_invoice.id,
+            medical_store_id=body.medical_store_id,
+            line_items_created=len(body.line_items),
+            summary_saved=summary_saved,
+            inventory_updates=[InventoryUpdate(**u) for u in inventory_updates_raw],
+        ),
+        "Invoice saved successfully",
+        status_code=201,
     )

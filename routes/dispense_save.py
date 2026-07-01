@@ -24,6 +24,7 @@ from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import Dispense, DrugReport, Medicine
 from schemas.audit_input import apply_record_identifier_on_create
+from schemas.response_schema import Response_Schema, success_response
 from schemas.save_dispense import DispenseSaveRequest, DispenseSaveResponse
 from schemas.save_invoice import InventoryUpdate
 from schemas.system_internal_user_schema import System_Internal_User_Schema
@@ -48,7 +49,7 @@ def _alerts_by_medicine(validation) -> dict[int, list[dict]]:
 
 @router.post(
     "/dispenses",
-    response_model=DispenseSaveResponse,
+    response_model=Response_Schema,
     status_code=status.HTTP_201_CREATED,
     summary="Validate, persist a dispense report JSON, and update inventory (-qty)",
     description=(
@@ -203,13 +204,17 @@ async def save_dispense_report(
         i=validation.summary.info,
     )
 
-    return DispenseSaveResponse(
-        report_id=db_report.id,
-        medical_store_id=body.medical_store_id,
-        medicines_saved=len(body.medicines),
-        dispenses_saved=total_dispenses,
-        force_saved=forced,
-        medicines_with_errors=medicines_with_errors,
-        inventory_updates=[InventoryUpdate(**u) for u in inventory_updates_raw],
-        validation=validation,
+    return success_response(
+        DispenseSaveResponse(
+            report_id=db_report.id,
+            medical_store_id=body.medical_store_id,
+            medicines_saved=len(body.medicines),
+            dispenses_saved=total_dispenses,
+            force_saved=forced,
+            medicines_with_errors=medicines_with_errors,
+            inventory_updates=[InventoryUpdate(**u) for u in inventory_updates_raw],
+            validation=validation,
+        ),
+        "Dispense report saved successfully",
+        status_code=201,
     )

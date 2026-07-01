@@ -18,6 +18,7 @@ from core.enums import UserRole
 from middlewares.auth import auth_incoming_req
 from schemas.audit_input import apply_record_identifier_on_update
 from schemas.inventory import InventoryAdjustRequest, InventoryListResponse, InventoryRow
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
 from services.inventory_service import _to_decimal, adjust_inventory, search_inventory
@@ -44,7 +45,7 @@ def _to_row(r) -> InventoryRow:
 
 @router.get(
     "/pharmacy/{ph_id}/inventory",
-    response_model=InventoryListResponse,
+    response_model=Response_Schema,
     summary="Current medicine inventory (search, paging, EXP dates)",
 )
 async def list_inventory(
@@ -60,18 +61,21 @@ async def list_inventory(
     rows, total = await search_inventory(
         db, medical_store_id=ph_id, q=q, only_negative=only_negative, skip=skip, limit=limit
     )
-    return InventoryListResponse(
-        medical_store_id=ph_id,
-        items=[_to_row(r) for r in rows],
-        total=total,
-        skip=skip,
-        limit=limit,
+    return success_response(
+        InventoryListResponse(
+            medical_store_id=ph_id,
+            items=[_to_row(r) for r in rows],
+            total=total,
+            skip=skip,
+            limit=limit,
+        ),
+        "Inventory retrieved successfully",
     )
 
 
 @router.patch(
     "/pharmacy/{ph_id}/inventory/{code}",
-    response_model=InventoryRow,
+    response_model=Response_Schema,
     summary="Manually correct an inventory row (owner/admin) without adding stock",
     description=(
         "Edit product name, quantity (absolute correction — not a delta), and/or "
@@ -130,4 +134,4 @@ async def update_inventory(
         )
     await db.commit()
     await db.refresh(row)
-    return _to_row(row)
+    return success_response(_to_row(row), "Inventory updated successfully")

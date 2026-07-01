@@ -20,6 +20,7 @@ from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import RefillDismissal
 from schemas.refills import RefillDismissResponse, RefillListResponse, RefillRow
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
 from services.pharmacy_authz import ensure_pharmacy_access
@@ -30,7 +31,7 @@ router = APIRouter(tags=["Refills"])
 
 @router.get(
     "/pharmacy/{ph_id}/refills",
-    response_model=RefillListResponse,
+    response_model=Response_Schema,
     summary="Customers due for a refill (latest fill + days_supply)",
     description=(
         "Refill-due list derived from dispense history: one row per customer + "
@@ -71,12 +72,15 @@ async def list_refills(
         ]
 
     items = [RefillRow(**vars(e)) for e in entries]
-    return RefillListResponse(medical_store_id=ph_id, items=items, total=len(items))
+    return success_response(
+        RefillListResponse(medical_store_id=ph_id, items=items, total=len(items)),
+        "Refills retrieved successfully",
+    )
 
 
 @router.delete(
     "/pharmacy/{ph_id}/refills/{patient_key}",
-    response_model=RefillDismissResponse,
+    response_model=Response_Schema,
     summary="Stop tracking a customer (or one of their medicines) for refills",
     description=(
         "Records a refill dismissal so the customer drops off the list. Omit "
@@ -121,9 +125,12 @@ async def dismiss_refill(
     )
     await db.commit()
 
-    return RefillDismissResponse(
-        medical_store_id=ph_id,
-        patient_key=patient_key,
-        drug_ndc=drug_ndc,
-        dismissed=True,
+    return success_response(
+        RefillDismissResponse(
+            medical_store_id=ph_id,
+            patient_key=patient_key,
+            drug_ndc=drug_ndc,
+            dismissed=True,
+        ),
+        "Refill customer dismissed successfully",
     )

@@ -22,6 +22,7 @@ from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import ActivityLog
 from schemas.activity import ActivityListResponse, ActivityRow
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.pharmacy_authz import ensure_pharmacy_access
 
@@ -30,7 +31,7 @@ router = APIRouter(tags=["Activity"])
 
 @router.get(
     "/pharmacy/{ph_id}/activity",
-    response_model=ActivityListResponse,
+    response_model=Response_Schema,
     summary="Owner activity feed (uploads, saves, force-saves, purchases, sales, adjustments)",
     description=(
         "Returns recorded actions newest-first. Filter by time range, action, "
@@ -87,10 +88,13 @@ async def list_activity(
         )
     ).scalars().all()
 
-    return ActivityListResponse(
-        medical_store_id=ph_id,
-        items=[ActivityRow.model_validate(r) for r in rows],
-        total=total,
-        skip=skip,
-        limit=limit,
+    return success_response(
+        ActivityListResponse(
+            medical_store_id=ph_id,
+            items=[ActivityRow.model_validate(r) for r in rows],
+            total=total,
+            skip=skip,
+            limit=limit,
+        ),
+        "Activity retrieved successfully",
     )

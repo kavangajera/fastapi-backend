@@ -23,6 +23,7 @@ from routes.invoice_save import router as invoice_save_router
 from routes.monitor import router as monitor_router
 from routes.pharmacy_purchase_report import router as report_router
 from routes.refills import router as refills_router
+from schemas.response_schema import success_response
 
 setup_logging()
 
@@ -199,7 +200,7 @@ async def dashboard_view():
 
 @app.get("/")
 async def welcome():
-    return {"message": "Welcome to Queue RX!"}
+    return success_response({"message": "Welcome to Queue RX!"}, "Welcome to Queue RX!")
 
 
 if __name__ == "__main__":

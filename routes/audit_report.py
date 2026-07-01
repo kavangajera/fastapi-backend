@@ -31,6 +31,7 @@ from schemas.audit_report import (
     ParsingError,
     ValidationErrorRow,
 )
+from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.pharmacy_authz import ensure_pharmacy_access
 
@@ -41,7 +42,7 @@ _FAILED_STATUSES = (DocumentStatus.FAILED.value, DocumentStatus.FAILED_PERMANENT
 
 @router.get(
     "/pharmacy/{ph_id}/audit-report",
-    response_model=AuditReportResponse,
+    response_model=Response_Schema,
     summary="Audit-friendly report of parsing & validation errors over a period",
     description=(
         "Aggregates document processing failures and force-saved dispense reports "
@@ -166,11 +167,14 @@ async def audit_report(
         total_validation_errors=int(total_validation_errors),
     )
 
-    return AuditReportResponse(
-        medical_store_id=ph_id,
-        date_from=date_from,
-        date_to=date_to,
-        summary=summary,
-        parsing_errors=parsing_errors,
-        validation_errors=validation_errors,
+    return success_response(
+        AuditReportResponse(
+            medical_store_id=ph_id,
+            date_from=date_from,
+            date_to=date_to,
+            summary=summary,
+            parsing_errors=parsing_errors,
+            validation_errors=validation_errors,
+        ),
+        "Audit report retrieved successfully",
     )
