@@ -9,7 +9,7 @@ class TokenData(BaseModel):
         description="Display name of the authenticated user (from the JWT claim).",
         examples=["user2"],
     )
-    owner_id: int = Field(
+    user_id: int = Field(
         ...,
         description="User ID of the authenticated user (from the JWT claim).",
         examples=[4],

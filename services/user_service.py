@@ -235,7 +235,7 @@ async def generate_new_access_token(req: Request, db: AsyncSession):
         _raise_error(401, "Invalid or expired refresh token")
 
     token_obj = TokenData(**data)
-    result = await db.execute(select(User).where(User.user_id == token_obj.owner_id))
+    result = await db.execute(select(User).where(User.user_id == token_obj.user_id))
     user_from_db = result.scalar_one_or_none()
     if not user_from_db:
         _raise_error(401, "User not found for this token")
