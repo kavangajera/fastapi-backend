@@ -21,14 +21,23 @@ class PharmacyUpdateInput(AuditInputFields):
         description="New street address. Omit to keep the current value.",
         examples=["456 Wellness Ave, Pune"],
     )
+    city: str | None = Field(None, description="City.", examples=["Pune"])
+    state: str | None = Field(None, description="State / province.", examples=["Maharashtra"])
+    zip_code: str | None = Field(None, description="ZIP / postal code.", examples=["411001"])
+    store_code: str | None = Field(
+        None, description="Store / outlet code.", examples=["STORE-01"]
+    )
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "pharmacy_title": "Deva's Health Hub",
                 "pharmacy_location": "456 Wellness Ave, Pune",
-                "record_Identifier": None,
-                "update_record_Identifier": "AN001111111STO000002",
+                "city": "Pune",
+                "state": "Maharashtra",
+                "zip_code": "411001",
+                "store_code": "STORE-01",
+                "device_id": "a1B2c3",
             }
         }
     }

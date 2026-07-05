@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import Invoice, InvoiceLineItem, InvoiceSummary
-from schemas.audit_input import apply_record_identifier_on_create
+from services.record_id_service import stamp_on_create
 from schemas.response_schema import Response_Schema, success_response
 from schemas.save_invoice import (
     InventoryUpdate,
@@ -96,7 +96,7 @@ async def save_invoice(
         remit_to_phone=body.remit_to_phone,
         raw_payload=body.model_dump_json(),
     )
-    apply_record_identifier_on_create(db_invoice, body)
+    await stamp_on_create(db, db_invoice, body.device_id)
     db.add(db_invoice)
     await db.flush()
 
@@ -130,7 +130,7 @@ async def save_invoice(
             dm_lot_number=item.dm_lot_number,
             verified=bool(item.verified) if item.verified is not None else False,
         )
-        apply_record_identifier_on_create(line_item, item)
+        await stamp_on_create(db, line_item, body.device_id)
         db.add(line_item)
 
     summary_saved = False
@@ -144,7 +144,7 @@ async def save_invoice(
             grand_total=body.summary.grand_total,
             total_due_by=body.summary.total_due_by,
         )
-        apply_record_identifier_on_create(invoice_summary, body.summary)
+        await stamp_on_create(db, invoice_summary, body.device_id)
         db.add(invoice_summary)
         summary_saved = True
 

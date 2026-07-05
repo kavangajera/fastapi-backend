@@ -34,8 +34,7 @@ class UserUpdateInput(AuditInputFields):
                 "name": "UpdatedUser2",
                 "user_email": "updated_user2@gmail.com",
                 "phone": "9876543210",
-                "record_Identifier": None,
-                "update_record_Identifier": "AN001111111USR000004",
+                "device_id": "a1B2c3",
             }
         }
     }

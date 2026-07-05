@@ -29,6 +29,14 @@ class Pharmacy(AuditMixin, Base):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     address: Mapped[str] = mapped_column(String(255), nullable=False)
 
+    # Structured address parts requested by the mobile app spec. Nullable so
+    # existing rows (and web callers that only send the free-text `address`)
+    # keep working.
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    zip_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    store_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # lazy="selectin": every PharmacyOutput.owner read on an AsyncSession
     # would otherwise emit a lazy load mid-validation and crash with
     # MissingGreenlet. We always need the owner row when serializing, so

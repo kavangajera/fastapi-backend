@@ -90,6 +90,7 @@ async def audit_report(
             record_Identifier=d.record_Identifier,
             update_record_Identifier=d.update_record_Identifier,
             IsDeleted=d.IsDeleted,
+            delete_date_at=d.delete_date_at,
             updated_at=d.updated_at,
             global_time_at=d.global_time_at,
         )
@@ -128,6 +129,7 @@ async def audit_report(
                     record_Identifier=med.record_Identifier,
                     update_record_Identifier=med.update_record_Identifier,
                     IsDeleted=med.IsDeleted,
+                    delete_date_at=med.delete_date_at,
                     updated_at=med.updated_at,
                     global_time_at=med.global_time_at,
                 )

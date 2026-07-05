@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.async_db import get_async_db
 from middlewares.auth import auth_incoming_req
 from models import Dispense, DrugReport, Medicine
-from schemas.audit_input import apply_record_identifier_on_create
+from services.record_id_service import stamp_on_create
 from schemas.response_schema import Response_Schema, success_response
 from schemas.save_dispense import DispenseSaveRequest, DispenseSaveResponse
 from schemas.save_invoice import InventoryUpdate
@@ -115,7 +115,7 @@ async def save_dispense_report(
             else None
         ),
     )
-    apply_record_identifier_on_create(db_report, body)
+    await stamp_on_create(db, db_report, body.device_id)
     db.add(db_report)
     await db.flush()
 
@@ -140,13 +140,13 @@ async def save_dispense_report(
             has_errors=bool(med_errors),
             validation_errors=med_errors,
         )
-        apply_record_identifier_on_create(db_med, med_in)
+        await stamp_on_create(db, db_med, body.device_id)
         db.add(db_med)
         await db.flush()
 
         for disp_in in med_in.dispenses:
             db_disp = _build_dispense(disp_in.model_dump(), db_med.id)
-            apply_record_identifier_on_create(db_disp, disp_in)
+            await stamp_on_create(db, db_disp, body.device_id)
             db.add(db_disp)
             total_dispenses += 1
 

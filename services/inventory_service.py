@@ -24,8 +24,33 @@ from sqlalchemy import func, select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from models import Dispense, Invoice, InvoiceLineItem, Medicine, MedicineInventory
+from models import (
+    Dispense,
+    Invoice,
+    InvoiceLineItem,
+    Medicine,
+    MedicineInventory,
+    MedicineNdcCache,
+)
 from services.ndc_utils import digits_only, ndc10_to_ndc11_from_package_ndc
+
+# ── stock-status thresholds ───────────────────────────────────────────────────
+# Derived label for the mobile app. Tweak the threshold here — nothing else
+# depends on the exact numbers.
+LOW_STOCK_THRESHOLD = Decimal("10")
+STATUS_OUT_OF_STOCK = "Out of stock"
+STATUS_LOW_STOCK = "Low stock"
+STATUS_IN_STOCK = "In stock"
+
+
+def derive_stock_status(quantity) -> str:
+    """0 → Out of stock, 1..LOW_STOCK_THRESHOLD → Low stock, else → In stock."""
+    qty = quantity if isinstance(quantity, Decimal) else (_to_decimal(quantity) or Decimal("0"))
+    if qty <= 0:
+        return STATUS_OUT_OF_STOCK
+    if qty <= LOW_STOCK_THRESHOLD:
+        return STATUS_LOW_STOCK
+    return STATUS_IN_STOCK
 
 # ── code resolution ─────────────────────────────────────────────────────────
 
@@ -265,6 +290,7 @@ async def adjust_inventory(
     product_name: str | None = None,
     quantity: Decimal | None = None,
     exp_date: str | None = None,
+    location: str | None = None,
 ) -> tuple[MedicineInventory | None, dict]:
     """
     Direct manual edit of an existing inventory row (no invoice/dispense).
@@ -293,9 +319,57 @@ async def adjust_inventory(
     if exp_date is not None and exp_date != row.exp_date:
         diff["exp_date"] = {"before": row.exp_date, "after": exp_date}
         row.exp_date = exp_date
+    if location is not None and location != row.location:
+        diff["location"] = {"before": row.location, "after": location}
+        row.location = location
 
     await session.flush()
     return row, diff
+
+
+async def get_inventory_detail(
+    session: AsyncSession, *, medical_store_id: int, code: str
+) -> dict | None:
+    """Single inventory row enriched for the mobile detail view.
+
+    Returns a dict with the row plus joined fields, or None if no such row:
+      - manufacturer  ← medicine_ndc_cache.brand_name (NDC-keyed)
+      - dosage_form   ← medicine_ndc_cache.dosage_form  (Dose Form/Type)
+      - lot_number    ← latest InvoiceLineItem for this store + NDC
+    """
+    res = await session.execute(
+        select(MedicineInventory).where(
+            MedicineInventory.medical_store_id == medical_store_id,
+            MedicineInventory.code == code,
+        )
+    )
+    row = res.scalar_one_or_none()
+    if row is None:
+        return None
+
+    # NDC cache is keyed by ndc11; a UPC-coded row simply won't match.
+    cache = await session.get(MedicineNdcCache, code)
+
+    lot_number = (
+        await session.execute(
+            select(InvoiceLineItem.lot_number)
+            .join(Invoice, InvoiceLineItem.invoice_id == Invoice.id)
+            .where(
+                Invoice.medical_store_id == medical_store_id,
+                InvoiceLineItem.ndc11 == code,
+                InvoiceLineItem.lot_number.isnot(None),
+            )
+            .order_by(InvoiceLineItem.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+    return {
+        "row": row,
+        "manufacturer": cache.brand_name if cache else None,
+        "dosage_form": cache.dosage_form if cache else None,
+        "lot_number": lot_number,
+    }
 
 
 # Exported for the save routes that need to look up an existing invoice

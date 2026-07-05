@@ -9,6 +9,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.enums import UserRole
+from core.record_ids import is_valid_device_id
 from core.security_schemes import (
     create_access_token,
     create_refresh_token,
@@ -22,14 +23,15 @@ from schemas.signup_input_user_schema import Signup_Input_User_Schema
 from schemas.signup_input_user_technician_schema import (
     Signup_Input_User_Technician_Schema,
 )
-from schemas.audit_input import (
-    apply_record_identifier_on_create,
-    apply_record_identifier_on_update,
-)
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from schemas.token_data_schemas import TokenData
 from schemas.user_output import UserOutput
 from schemas.user_update_input import UserUpdateInput
+from services.record_id_service import (
+    resolve_device,
+    stamp_on_create,
+    stamp_on_update,
+)
 
 # ================= HELPERS =================
 
@@ -62,9 +64,14 @@ async def create_user(user: Signup_Input_User_Schema, db: AsyncSession):
         contact_number="1234567890",
         password_hash=ph.hash(user.input_password),
     )
-    apply_record_identifier_on_create(user_model, user)
     try:
         db.add(user_model)
+        await db.flush()  # assign user_id before device association / stamping
+        if is_valid_device_id(user.device_id):
+            await resolve_device(
+                db, device_id=user.device_id, user_id=user_model.user_id
+            )
+        await stamp_on_create(db, user_model, user.device_id)
         await db.commit()
         await db.refresh(user_model)
     except SQLAlchemyError as exc:
@@ -112,6 +119,20 @@ async def login_user(
         # On successful login the account is active and no longer logged out.
         user_from_db.IsActive = 1
         user_from_db.IsLogout = 0
+
+        # Register / refresh the calling device and pin its source prefix so
+        # every record id generated for it carries the right platform code.
+        # Missing / malformed ids are generated server-side; the canonical
+        # value is returned below for the client to store.
+        device = await resolve_device(
+            db,
+            device_id=user.device_id,
+            source_prefix=user.source,
+            platform=user.source_platform,
+            user_id=user_from_db.user_id,
+        )
+        canonical_device_id = device.device_id
+
         db.add(refresh_token_for_db)
         await db.commit()
 
@@ -140,9 +161,11 @@ async def login_user(
         "id": user_from_db.user_id,
         "email": user_from_db.email,
         "role": user_from_db.role.value,
+        "device_id": canonical_device_id,
         "record_Identifier": user_from_db.record_Identifier,
         "update_record_Identifier": user_from_db.update_record_Identifier,
         "IsDeleted": user_from_db.IsDeleted,
+        "delete_date_at": user_from_db.delete_date_at,
         "created_at": user_from_db.created_at,
         "updated_at": user_from_db.updated_at,
         "global_time_at": user_from_db.global_time_at,
@@ -204,6 +227,7 @@ async def impersonate_user(
         "record_Identifier": target.record_Identifier,
         "update_record_Identifier": target.update_record_Identifier,
         "IsDeleted": target.IsDeleted,
+        "delete_date_at": target.delete_date_at,
         "created_at": target.created_at,
         "updated_at": target.updated_at,
         "global_time_at": target.global_time_at,
@@ -297,10 +321,10 @@ async def create_technician(
         role=UserRole.TECHNICIAN,
         medical_store_id=pharmacy.medical_store_id,
     )
-    apply_record_identifier_on_create(user_model, technician)
-
     try:
         db.add(user_model)
+        await db.flush()
+        await stamp_on_create(db, user_model, technician.device_id)
         await db.commit()
         await db.refresh(user_model)
     except SQLAlchemyError as exc:
@@ -379,7 +403,7 @@ async def update_user(
     if "phone" in update_fields:
         user_from_db.contact_number = update_fields["phone"]
 
-    apply_record_identifier_on_update(user_from_db, update_data)
+    await stamp_on_update(db, user_from_db, update_data.device_id)
 
     try:
         await db.commit()
@@ -451,7 +475,7 @@ async def update_self(
     if "phone" in update_fields:
         user_from_db.contact_number = update_fields["phone"]
 
-    apply_record_identifier_on_update(user_from_db, update_data)
+    await stamp_on_update(db, user_from_db, update_data.device_id)
 
     try:
         await db.commit()

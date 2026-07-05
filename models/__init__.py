@@ -1,4 +1,5 @@
 from .activity_log import ActivityLog
+from .device import Device, RecordCounter
 from .dispense_report import Dispense, DrugReport, Medicine
 from .document import Document
 from .invoice import Invoice, InvoiceLineItem, InvoiceSummary
@@ -24,4 +25,6 @@ __all__ = [
     "Document",
     "ActivityLog",
     "RefillDismissal",
+    "Device",
+    "RecordCounter",
 ]

@@ -25,6 +25,16 @@ class PharmacyOutput(AuditFields, BaseModel):
         description="Physical street address of the pharmacy.",
         examples=["skfnoajnf"],
     )
+    city: str | None = Field(default=None, alias="city", description="City.", examples=["Mumbai"])
+    state: str | None = Field(
+        default=None, alias="state", description="State / province.", examples=["Maharashtra"]
+    )
+    zip_code: str | None = Field(
+        default=None, alias="zip_code", description="ZIP / postal code.", examples=["400001"]
+    )
+    store_code: str | None = Field(
+        default=None, alias="store_code", description="Store / outlet code.", examples=["STORE-01"]
+    )
     owner: UserOutput | None = Field(
         default=None,
         alias="owner",

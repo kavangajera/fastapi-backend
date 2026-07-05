@@ -25,6 +25,7 @@ class AuditFields(BaseModel):
     record_Identifier: str | None = None
     update_record_Identifier: str | None = None
     IsDeleted: bool = False
+    delete_date_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     global_time_at: datetime | None = None

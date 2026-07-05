@@ -2,6 +2,7 @@
 routes/inventory.py
 ───────────────────
 `GET   /pharmacy/{ph_id}/inventory`         — current stock (search + paging + EXP)
+`GET   /pharmacy/{ph_id}/inventory/{code}`  — single-item detail (manufacturer, form, lot, status)
 `PATCH /pharmacy/{ph_id}/inventory/{code}`  — manual correction (owner/admin)
 
 EXP dates are only present on rows whose stock was added from a scanned
@@ -16,12 +17,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.async_db import get_async_db
 from core.enums import UserRole
 from middlewares.auth import auth_incoming_req
-from schemas.audit_input import apply_record_identifier_on_update
-from schemas.inventory import InventoryAdjustRequest, InventoryListResponse, InventoryRow
+from schemas.inventory import (
+    InventoryAdjustRequest,
+    InventoryDetail,
+    InventoryListResponse,
+    InventoryRow,
+)
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
-from services.inventory_service import _to_decimal, adjust_inventory, search_inventory
+from services.record_id_service import stamp_on_update
+from services.inventory_service import (
+    _to_decimal,
+    adjust_inventory,
+    derive_stock_status,
+    get_inventory_detail,
+    search_inventory,
+)
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(tags=["Inventory"])
@@ -32,12 +44,15 @@ def _to_row(r) -> InventoryRow:
         code=r.code,
         product_name=r.product_name,
         quantity=str(r.quantity),
+        status=derive_stock_status(r.quantity),
+        location=r.location,
         exp_date=r.exp_date,
         last_invoice_id=r.last_invoice_id,
         updated_at=r.updated_at,
         record_Identifier=r.record_Identifier,
         update_record_Identifier=r.update_record_Identifier,
         IsDeleted=r.IsDeleted,
+        delete_date_at=r.delete_date_at,
         created_at=r.created_at,
         global_time_at=r.global_time_at,
     )
@@ -111,6 +126,7 @@ async def update_inventory(
         product_name=body.product_name,
         quantity=quantity,
         exp_date=body.exp_date,
+        location=body.location,
     )
     if row is None:
         raise HTTPException(
@@ -118,7 +134,7 @@ async def update_inventory(
             detail={"status_code": 404, "message": f"No inventory row for code '{code}'", "data": None},
         )
 
-    apply_record_identifier_on_update(row, body)
+    await stamp_on_update(db, row, body.device_id)
 
     if diff:
         await log_activity(
@@ -135,3 +151,51 @@ async def update_inventory(
     await db.commit()
     await db.refresh(row)
     return success_response(_to_row(row), "Inventory updated successfully")
+
+
+@router.get(
+    "/pharmacy/{ph_id}/inventory/{code}",
+    response_model=Response_Schema,
+    summary="Inventory item detail (manufacturer, dose form, lot, stock status)",
+    description=(
+        "Single inventory item enriched for the mobile detail view: manufacturer "
+        "and dose form from the FDA NDC cache, latest lot number from invoices, "
+        "expiry, total stock, and derived stock status."
+    ),
+)
+async def inventory_detail(
+    ph_id: int = Path(..., description="medical_store_id"),
+    code: str = Path(..., description="Inventory code (NDC11 or UPC)"),
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    await ensure_pharmacy_access(db, user, ph_id)
+    detail = await get_inventory_detail(db, medical_store_id=ph_id, code=code)
+    if detail is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"status_code": 404, "message": f"No inventory row for code '{code}'", "data": None},
+        )
+    r = detail["row"]
+    return success_response(
+        InventoryDetail(
+            code=r.code,
+            product_name=r.product_name,
+            manufacturer=detail["manufacturer"],
+            dosage_form=detail["dosage_form"],
+            lot_number=detail["lot_number"],
+            exp_date=r.exp_date,
+            quantity=str(r.quantity),
+            status=derive_stock_status(r.quantity),
+            location=r.location,
+            last_added=r.updated_at,
+            record_Identifier=r.record_Identifier,
+            update_record_Identifier=r.update_record_Identifier,
+            IsDeleted=r.IsDeleted,
+            delete_date_at=r.delete_date_at,
+            created_at=r.created_at,
+            updated_at=r.updated_at,
+            global_time_at=r.global_time_at,
+        ),
+        "Inventory item retrieved successfully",
+    )

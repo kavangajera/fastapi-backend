@@ -46,6 +46,10 @@ class MedicineInventory(AuditMixin, Base):
     code: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     product_name: Mapped[str | None] = mapped_column(String(300), nullable=True)
 
+    # Physical shelf/bin location. Manual value (invoices/dispenses never carry
+    # it) set by the owner via the adjust endpoint. NULL until assigned.
+    location: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
     # Expiry shown in the UI ONLY when it came from a scanned barcode/QR
     # (InvoiceLineItem.dm_expiration_date). NULL when never scanned.
     exp_date: Mapped[str | None] = mapped_column(String(12), nullable=True)

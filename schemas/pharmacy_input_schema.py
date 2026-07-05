@@ -21,14 +21,23 @@ class Pharmacy_Input_Schema(AuditInputFields):
         description="Physical street address of the pharmacy.",
         examples=["123 Health Street, Mumbai"],
     )
+    city: str | None = Field(None, description="City.", examples=["Mumbai"])
+    state: str | None = Field(None, description="State / province.", examples=["Maharashtra"])
+    zip_code: str | None = Field(None, description="ZIP / postal code.", examples=["400001"])
+    store_code: str | None = Field(
+        None, description="Store / outlet code.", examples=["STORE-01"]
+    )
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "pharmacy_title": "MediCare Pharmacy",
                 "pharmacy_location": "123 Health Street, Mumbai",
-                "record_Identifier": "AN001111111STO000002",
-                "update_record_Identifier": None,
+                "city": "Mumbai",
+                "state": "Maharashtra",
+                "zip_code": "400001",
+                "store_code": "STORE-01",
+                "device_id": "a1B2c3",
             }
         }
     }

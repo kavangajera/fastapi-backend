@@ -45,8 +45,7 @@ class Signup_Input_User_Technician_Schema(AuditInputFields):
                 "input_password": "123456",
                 "contact": "1234567890",
                 "medical_store_id": 2,
-                "record_Identifier": "AN001111111USR000012",
-                "update_record_Identifier": None,
+                "device_id": "a1B2c3",
             }
         }
     }
