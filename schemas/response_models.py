@@ -26,6 +26,15 @@ class AccessTokenData(BaseModel):
 class LoginData(AuditFields, UserStateFields):
     """Data returned after successful login — token + user info."""
 
+    device_id: str | None = Field(
+        None,
+        description=(
+            "Canonical device id for this device. Echoes the client's value, or "
+            "the server-generated one when the client sent none — store it and "
+            "resend on future logins."
+        ),
+        examples=["a1B2c3"],
+    )
     refresh_token:str=Field(
         ...,
         description="JWT refresh token. Include in the Cookies.",
@@ -76,9 +85,21 @@ class PharmacyData(AuditFields):
     id: int = Field(..., description="Unique pharmacy identifier.", examples=[2])
     name: str = Field(..., description="Pharmacy name.", examples=["Deva'sShop"])
     address: str = Field(..., description="Street address.", examples=["skfnoajnf"])
+    city: str | None = Field(None, description="City.", examples=["Mumbai"])
+    state: str | None = Field(None, description="State / province.", examples=["Maharashtra"])
+    zip_code: str | None = Field(None, description="ZIP / postal code.", examples=["400001"])
+    store_code: str | None = Field(None, description="Store / outlet code.", examples=["STORE-01"])
     owner: UserData | None = Field(
         None,
         description="Owner details (included for ADMIN, null for OWNER viewing own pharmacy).",
+    )
+
+
+class PharmacyDeleteData(BaseModel):
+    """Identifier returned after a pharmacy is deleted."""
+
+    medical_store_id: int = Field(
+        ..., description="Identifier of the deleted pharmacy.", examples=[2]
     )
 
 
@@ -531,14 +552,16 @@ class PharmacyDeleteResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Pharmacy deleted successfully"]
     )
-    data: str | None = Field(None, description="Always null on successful deletion.")
+    data: PharmacyDeleteData | None = Field(
+        None, description="Identifier of the deleted pharmacy."
+    )
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "status_code": 200,
                 "message": "Pharmacy deleted successfully",
-                "data": None,
+                "data": {"medical_store_id": 2},
             }
         }
     }
