@@ -25,17 +25,33 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _has_column(insp, table: str, column: str) -> bool:
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
+def _add(insp, table: str, column: sa.Column) -> None:
+    if not _has_column(insp, table, column.name):
+        op.add_column(table, column)
+
+
+def _drop(insp, table: str, column: str) -> None:
+    if _has_column(insp, table, column):
+        op.drop_column(table, column)
+
+
 def upgrade() -> None:
-    op.add_column("medical_store", sa.Column("city", sa.String(length=120), nullable=True))
-    op.add_column("medical_store", sa.Column("state", sa.String(length=120), nullable=True))
-    op.add_column("medical_store", sa.Column("zip_code", sa.String(length=20), nullable=True))
-    op.add_column("medical_store", sa.Column("store_code", sa.String(length=50), nullable=True))
-    op.add_column("medicine_inventory", sa.Column("location", sa.String(length=120), nullable=True))
+    insp = sa.inspect(op.get_bind())
+    _add(insp, "medical_store", sa.Column("city", sa.String(length=120), nullable=True))
+    _add(insp, "medical_store", sa.Column("state", sa.String(length=120), nullable=True))
+    _add(insp, "medical_store", sa.Column("zip_code", sa.String(length=20), nullable=True))
+    _add(insp, "medical_store", sa.Column("store_code", sa.String(length=50), nullable=True))
+    _add(insp, "medicine_inventory", sa.Column("location", sa.String(length=120), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("medicine_inventory", "location")
-    op.drop_column("medical_store", "store_code")
-    op.drop_column("medical_store", "zip_code")
-    op.drop_column("medical_store", "state")
-    op.drop_column("medical_store", "city")
+    insp = sa.inspect(op.get_bind())
+    _drop(insp, "medicine_inventory", "location")
+    _drop(insp, "medical_store", "store_code")
+    _drop(insp, "medical_store", "zip_code")
+    _drop(insp, "medical_store", "state")
+    _drop(insp, "medical_store", "city")

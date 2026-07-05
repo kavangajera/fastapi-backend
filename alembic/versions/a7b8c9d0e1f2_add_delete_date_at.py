@@ -40,11 +40,19 @@ TABLES: list[str] = [
 ]
 
 
+def _has_column(insp, table: str, column: str) -> bool:
+    return any(c["name"] == column for c in insp.get_columns(table))
+
+
 def upgrade() -> None:
+    insp = sa.inspect(op.get_bind())
     for table in TABLES:
-        op.add_column(table, sa.Column("delete_date_at", sa.DateTime(), nullable=True))
+        if not _has_column(insp, table, "delete_date_at"):
+            op.add_column(table, sa.Column("delete_date_at", sa.DateTime(), nullable=True))
 
 
 def downgrade() -> None:
+    insp = sa.inspect(op.get_bind())
     for table in reversed(TABLES):
-        op.drop_column(table, "delete_date_at")
+        if _has_column(insp, table, "delete_date_at"):
+            op.drop_column(table, "delete_date_at")
