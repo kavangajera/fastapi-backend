@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit_input import AuditInputFields
 from schemas.save_invoice import InventoryUpdate
@@ -100,7 +100,7 @@ class DispenseSaveRequest(AuditInputFields):
 class DispenseSaveResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     report_id: int
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     medicines_saved: int
     dispenses_saved: int
     force_saved: bool = False

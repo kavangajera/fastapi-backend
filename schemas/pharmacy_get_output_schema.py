@@ -7,9 +7,9 @@ from schemas.user_get_output import UserGetOutput
 class PharmacyGetOutputSchema(AuditFields, BaseModel):
     """Pharmacy data returned by GET endpoints (list pharmacies, search, etc.)."""
 
-    medical_store_id: int = Field(
+    pharmacy_id: int = Field(
         ...,
-        alias="medical_store_id",
+        validation_alias="medical_store_id",
         description="Unique numeric identifier of the pharmacy.",
         examples=[2],
     )

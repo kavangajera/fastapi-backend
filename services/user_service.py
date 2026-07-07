@@ -158,7 +158,7 @@ async def login_user(
     data = {
         "access_token": access_token,
         "refresh_token":refresh_token,
-        "id": user_from_db.user_id,
+        "user_id": user_from_db.user_id,
         "email": user_from_db.email,
         "role": user_from_db.role.value,
         "device_id": canonical_device_id,
@@ -220,10 +220,10 @@ async def impersonate_user(
 
     return {
         "access_token": access_token,
-        "id": target.user_id,
+        "user_id": target.user_id,
         "email": target.email,
         "role": target.role.value,
-        "medical_store_id": medical_store_id,
+        "pharmacy_id": medical_store_id,
         "record_Identifier": target.record_Identifier,
         "update_record_Identifier": target.update_record_Identifier,
         "IsDeleted": target.IsDeleted,

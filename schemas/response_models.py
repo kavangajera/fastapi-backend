@@ -45,7 +45,7 @@ class LoginData(AuditFields, UserStateFields):
         description="JWT access token. Include in the Authorization header as 'Bearer <token>'.",
         examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
-    id: int = Field(..., description="Unique user identifier.", examples=[4])
+    user_id: int = Field(..., description="Unique user identifier.", examples=[4])
     email: str = Field(..., description="Registered email.", examples=["user2@gmail.com"])
     role: str = Field(
         ...,
@@ -70,7 +70,7 @@ class AppLoginData(LoginData):
 class UserData(AuditFields, UserStateFields):
     """User data returned after signup, update, or profile retrieval."""
 
-    id: int = Field(..., description="Unique user identifier.", examples=[4])
+    user_id: int = Field(..., description="Unique user identifier.", examples=[4])
     email: str = Field(..., description="Registered email.", examples=["user2@gmail.com"])
     role: str = Field(
         ...,
@@ -82,7 +82,7 @@ class UserData(AuditFields, UserStateFields):
 class PharmacyData(AuditFields):
     """Pharmacy data returned by CRUD endpoints."""
 
-    id: int = Field(..., description="Unique pharmacy identifier.", examples=[2])
+    pharmacy_id: int = Field(..., description="Unique pharmacy identifier.", examples=[2])
     name: str = Field(..., description="Pharmacy name.", examples=["Deva'sShop"])
     address: str = Field(..., description="Street address.", examples=["skfnoajnf"])
     city: str | None = Field(None, description="City.", examples=["Mumbai"])
@@ -98,7 +98,7 @@ class PharmacyData(AuditFields):
 class PharmacyDeleteData(BaseModel):
     """Identifier returned after a pharmacy is deleted."""
 
-    medical_store_id: int = Field(
+    pharmacy_id: int = Field(
         ..., description="Identifier of the deleted pharmacy.", examples=[2]
     )
 
@@ -119,7 +119,7 @@ class SignupResponse(BaseModel):
                 "status_code": 201,
                 "message": "User created successfully",
                 "data": {
-                    "id": 4,
+                    "user_id": 4,
                     "email": "user2@gmail.com",
                     "role": "OWNER",
                 },
@@ -144,7 +144,7 @@ class LoginResponse(BaseModel):
                 "message": "Login successful",
                 "data": {
                     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VybmFtZSI6InVzZXIyIiwidXNlcl9pZCI6NCwiZXhwaXJlIjoxNzQzOTM2MDAwfQ.xxxxx",
-                    "id": 4,
+                    "user_id": 4,
                     "email": "user2@gmail.com",
                     "role": "OWNER",
                 },
@@ -171,10 +171,10 @@ class ImpersonationData(AuditFields, UserStateFields):
         description="JWT access token scoped to the impersonated user.",
         examples=["eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."],
     )
-    id: int = Field(..., description="ID of the impersonated user.", examples=[4])
+    user_id: int = Field(..., description="ID of the impersonated user.", examples=[4])
     email: str = Field(..., description="Email of the impersonated user.", examples=["user2@gmail.com"])
     role: str = Field(..., description="Role of the impersonated user.", examples=["OWNER"])
-    medical_store_id: int | None = Field(
+    pharmacy_id: int | None = Field(
         None, description="Pre-selected pharmacy ID for the session, if provided.", examples=[2]
     )
 
@@ -193,10 +193,10 @@ class ImpersonationResponse(BaseModel):
                 "message": "Impersonation token issued",
                 "data": {
                     "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                    "id": 4,
+                    "user_id": 4,
                     "email": "user2@gmail.com",
                     "role": "OWNER",
-                    "medical_store_id": 2,
+                    "pharmacy_id": 2,
                 },
             }
         }
@@ -243,7 +243,7 @@ class UserProfileResponse(BaseModel):
                 "status_code": 200,
                 "message": "Profile retrieved successfully",
                 "data": {
-                    "id": 4,
+                    "user_id": 4,
                     "email": "user2@gmail.com",
                     "role": "OWNER",
                 },
@@ -265,7 +265,7 @@ class UserUpdateResponse(BaseModel):
                 "status_code": 200,
                 "message": "User updated successfully",
                 "data": {
-                    "id": 4,
+                    "user_id": 4,
                     "email": "updated_user2@gmail.com",
                     "role": "OWNER",
                 },
@@ -307,7 +307,7 @@ class TechnicianCreateResponse(BaseModel):
                 "status_code": 201,
                 "message": "Technician created successfully",
                 "data": {
-                    "id": 12,
+                    "user_id": 12,
                     "email": "User2Tech@gmail.com",
                     "role": "TECHNICIAN",
                 },
@@ -332,12 +332,12 @@ class TechnicianListResponse(BaseModel):
                 "message": "Technicians retrieved successfully",
                 "data": [
                     {
-                        "id": 9,
+                        "user_id": 9,
                         "email": "Every time add new email because of it is unique",
                         "role": "TECHNICIAN",
                     },
                     {
-                        "id": 12,
+                        "user_id": 12,
                         "email": "User2Tech@gmail.com",
                         "role": "TECHNICIAN",
                     },
@@ -366,17 +366,17 @@ class UserListResponse(BaseModel):
                 "message": "Users retrieved successfully",
                 "data": [
                     {
-                        "id": 4,
+                        "user_id": 4,
                         "email": "user2@gmail.com",
                         "role": "OWNER",
                     },
                     {
-                        "id": 6,
+                        "user_id": 6,
                         "email": "admin@gmail.com",
                         "role": "ADMIN",
                     },
                     {
-                        "id": 12,
+                        "user_id": 12,
                         "email": "User2Tech@gmail.com",
                         "role": "TECHNICIAN",
                     },
@@ -401,7 +401,7 @@ class UserByEmailResponse(BaseModel):
                 "status_code": 200,
                 "message": "User retrieved successfully",
                 "data": {
-                    "id": 4,
+                    "user_id": 4,
                     "email": "user2@gmail.com",
                     "role": "OWNER",
                 },
@@ -428,12 +428,12 @@ class UsersByRoleResponse(BaseModel):
                 "message": "Users retrieved successfully",
                 "data": [
                     {
-                        "id": 4,
+                        "user_id": 4,
                         "email": "user2@gmail.com",
                         "role": "OWNER",
                     },
                     {
-                        "id": 7,
+                        "user_id": 7,
                         "email": "tech@gmail.com",
                         "role": "OWNER",
                     },
@@ -461,11 +461,11 @@ class PharmacyCreateResponse(BaseModel):
                 "status_code": 201,
                 "message": "Pharmacy created successfully",
                 "data": {
-                    "id": 2,
+                    "pharmacy_id": 2,
                     "name": "Deva'sShop",
                     "address": "skfnoajnf",
                     "owner": {
-                        "id": 4,
+                        "user_id": 4,
                         "email": "user2@gmail.com",
                         "role": "OWNER",
                     },
@@ -491,21 +491,21 @@ class PharmacyListResponse(BaseModel):
                 "message": "Pharmacy retrieved successfully",
                 "data": [
                     {
-                        "id": 2,
+                        "pharmacy_id": 2,
                         "name": "Deva'sShop",
                         "address": "skfnoajnf",
                         "owner": {
-                            "id": 4,
+                            "user_id": 4,
                             "email": "user2@gmail.com",
                             "role": "OWNER",
                         },
                     },
                     {
-                        "id": 9,
+                        "pharmacy_id": 9,
                         "name": "Enter Your pharmacy name",
                         "address": "Dummy address",
                         "owner": {
-                            "id": 7,
+                            "user_id": 7,
                             "email": "tech@gmail.com",
                             "role": "OWNER",
                         },
@@ -531,11 +531,11 @@ class PharmacyUpdateResponse(BaseModel):
                 "status_code": 200,
                 "message": "Pharmacy updated successfully",
                 "data": {
-                    "id": 2,
+                    "pharmacy_id": 2,
                     "name": "Deva's Health Hub",
                     "address": "456 Wellness Ave, Pune",
                     "owner": {
-                        "id": 4,
+                        "user_id": 4,
                         "email": "user2@gmail.com",
                         "role": "OWNER",
                     },
@@ -561,7 +561,7 @@ class PharmacyDeleteResponse(BaseModel):
             "example": {
                 "status_code": 200,
                 "message": "Pharmacy deleted successfully",
-                "data": {"medical_store_id": 2},
+                "data": {"pharmacy_id": 2},
             }
         }
     }

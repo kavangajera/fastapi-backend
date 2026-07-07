@@ -41,7 +41,7 @@ class DispenseBase(BaseModel):
 class DispenseResponse(DispenseBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    dispense_id: int = Field(validation_alias="id")
     medicine_id: int
 
 
@@ -63,7 +63,7 @@ class MedicineBase(BaseModel):
 class MedicineResponse(MedicineBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    medicine_id: int = Field(validation_alias="id")
     report_id: int
     dispenses: list[DispenseResponse] = []
 
@@ -72,7 +72,7 @@ class MedicineResponse(MedicineBase, AuditFields):
 # DrugReport schemas
 # ---------------------------------------------------------------------------
 class DrugReportBase(BaseModel):
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     document_id: int | None = None
     batch_id: int | None = None
     report_date: str | None = None
@@ -86,7 +86,7 @@ class DrugReportBase(BaseModel):
 class DrugReportResponse(DrugReportBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    report_id: int = Field(validation_alias="id")
     created_at: datetime
     medicines: list[MedicineResponse] = []
 
@@ -96,9 +96,9 @@ class DrugReportListItem(AuditFields):
 
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    report_id: int = Field(validation_alias="id")
     created_at: datetime
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     batch_id: int | None = None
     report_from_date: str | None
     report_to_date: str | None

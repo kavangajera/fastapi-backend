@@ -18,6 +18,14 @@
   `{ "status_code": <code>, "message": "...", "data": null }`. Pydantic
   validation errors come back as `422` with a `Validation Error: ...`
   message naming the failing field.
+- **Id field naming**: response bodies expose primary keys with a
+  table-prefixed name, never a bare `id` — `user_id`, `pharmacy_id`,
+  `invoice_id`, `report_id`, `medicine_id`, `dispense_id`,
+  `line_item_id`, `summary_id`, `activity_id`. The pharmacy is always
+  `pharmacy_id` in responses (the DB column is still `medical_store_id`;
+  it is aliased on the way out). **Request bodies are unchanged** — they
+  still take `medical_store_id` (e.g. create-technician, `/documents/process`,
+  `/invoices`, `/dispenses`).
 - **Role gating**: every endpoint that touches a pharmacy / medical
   store goes through `services/pharmacy_authz.py::ensure_pharmacy_access`
   — `ADMIN` allowed everywhere, `PHARMACY_OWNER` only on stores they
@@ -87,7 +95,7 @@ Create a new `PHARMACY_OWNER`. Email must be unique.
 **200 (envelope)**
 ```json
 { "status_code": 201, "message": "User created successfully",
-  "data": { "id": 1, "email": "owner@example.com", "role": "OWNER" } }
+  "data": { "user_id": 1, "email": "owner@example.com", "role": "OWNER" } }
 ```
 
 ### `POST /user/login`
@@ -100,7 +108,7 @@ Create a new `PHARMACY_OWNER`. Email must be unique.
 **200**
 ```json
 { "status_code": 200, "message": "Login successful",
-  "data": { "access_token": "eyJ...", "id": 1, "email": "owner@example.com", "role": "OWNER" } }
+  "data": { "access_token": "eyJ...", "user_id": 1, "email": "owner@example.com", "role": "OWNER" } }
 ```
 
 Also sets the `refresh_token` httpOnly cookie. Access token expiry
@@ -165,7 +173,7 @@ Admin-only listing/search endpoints. 403 for other roles.
 { "pharmacy_title": "My Store", "pharmacy_location": "Brooklyn NY 11226" }
 ```
 
-**201** returns `{ data: { medical_store_id: 1, name, address, owner: {...} } }`.
+**201** returns `{ data: { pharmacy_id: 1, name, address, owner: { user_id, email, role } } }`.
 
 ### `GET /pharmacy/get-pharmacy?ph_id=`
 
@@ -308,7 +316,7 @@ exactly — you can `data → body` with no transformation.
 ```json
 {
   "invoice_id": 1,
-  "medical_store_id": 1,
+  "pharmacy_id": 1,
   "line_items_created": 5,
   "summary_saved": true,
   "inventory_updates": [
@@ -425,7 +433,7 @@ Otherwise:
 ```json
 {
   "report_id": 1,
-  "medical_store_id": 1,
+  "pharmacy_id": 1,
   "medicines_saved": 86,
   "dispenses_saved": 98,
   "inventory_updates": [
@@ -477,7 +485,7 @@ unwind inventory changes — manual data fix only.
 
 ```json
 {
-  "medical_store_id": 1,
+  "pharmacy_id": 1,
   "items": [
     { "code": "72888000901", "product_name": "BACLOFEN TB 5MG 100",
       "quantity": "-30.000", "last_invoice_id": 1,
@@ -525,7 +533,7 @@ POST /user/login     { user_email, input_password }   → access_token
 
 # 2. Create a store
 POST /pharmacy/create-pharmacy   { pharmacy_title, pharmacy_location }
-                                                       → medical_store_id
+                                                       → pharmacy_id
 
 # 3. Upload + extract a dispense PDF
 POST /documents/process

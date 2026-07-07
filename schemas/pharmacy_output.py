@@ -7,9 +7,9 @@ from schemas.user_output import UserOutput
 class PharmacyOutput(AuditFields, BaseModel):
     """Frontend-facing pharmacy output — internal DB field names hidden via aliases."""
 
-    id: int = Field(
+    pharmacy_id: int = Field(
         ...,
-        alias="medical_store_id",
+        validation_alias="medical_store_id",
         description="Unique numeric identifier of the pharmacy.",
         examples=[2],
     )

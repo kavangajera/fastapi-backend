@@ -166,7 +166,7 @@ async def delete_pharmacy(
         logger.error("Failed to delete pharmacy: {err}", err=str(exc))
         _raise_error(500, "Failed to delete pharmacy")
 
-    return {"medical_store_id": ph_id}
+    return {"pharmacy_id": ph_id}
 
 
 # ================= SEARCH BY NAME =================

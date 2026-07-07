@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit_fields import AuditFields
 
@@ -32,7 +32,7 @@ class RefillRow(AuditFields):
 class RefillListResponse(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     items: list[RefillRow]
     total: int
 
@@ -40,7 +40,7 @@ class RefillListResponse(AuditFields):
 class RefillDismissResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     patient_key: str
     drug_ndc: str | None = None
     dismissed: bool

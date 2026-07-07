@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit_fields import AuditFields
 
@@ -40,7 +40,7 @@ class InvoiceLineItemBase(BaseModel):
 class InvoiceLineItemResponse(InvoiceLineItemBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    line_item_id: int = Field(validation_alias="id")
     invoice_id: int
 
 
@@ -56,7 +56,7 @@ class InvoiceSummaryBase(BaseModel):
 class InvoiceSummaryResponse(InvoiceSummaryBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    summary_id: int = Field(validation_alias="id")
     invoice_id: int
 
 
@@ -96,7 +96,7 @@ class InvoiceBase(BaseModel):
 class InvoiceResponse(InvoiceBase, AuditFields):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    invoice_id: int = Field(validation_alias="id")
     created_at: datetime
     line_items: list[InvoiceLineItemResponse] = []
     summary: InvoiceSummaryResponse | None = None

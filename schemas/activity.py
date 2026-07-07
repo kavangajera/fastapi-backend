@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit_fields import AuditFields
 
@@ -17,7 +17,7 @@ from schemas.audit_fields import AuditFields
 class ActivityRow(AuditFields):
     model_config = ConfigDict(extra="forbid", from_attributes=True)
 
-    id: int
+    activity_id: int = Field(validation_alias="id")
     created_at: datetime
     action: str
     actor_user_id: int | None = None
@@ -36,7 +36,7 @@ class ActivityRow(AuditFields):
 class ActivityListResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     items: list[ActivityRow]
     total: int
     skip: int

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit_fields import AuditFields
 
@@ -56,7 +56,7 @@ class ValidationErrorRow(AuditFields):
 class AuditReportResponse(AuditFields):
     model_config = ConfigDict(extra="forbid")
 
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     date_from: datetime | None = None
     date_to: datetime | None = None
     summary: AuditSummary

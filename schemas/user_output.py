@@ -8,9 +8,9 @@ from schemas.user_state_fields import UserStateFields
 class UserOutput(AuditFields, UserStateFields):
     """Frontend-facing user output — internal DB field names are hidden via aliases."""
 
-    id: int = Field(
+    user_id: int = Field(
         ...,
-        alias="user_id",
+        validation_alias="user_id",
         description="Unique numeric identifier of the user.",
         examples=[4],
     )

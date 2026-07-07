@@ -12,7 +12,7 @@ per-line-item `fda_*` / `dm_*` fields from a barcode scan, and POST it.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from schemas.audit_input import AuditInputFields
 
@@ -114,7 +114,7 @@ class InvoiceSaveResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     invoice_id: int
-    medical_store_id: int
+    pharmacy_id: int = Field(validation_alias="medical_store_id")
     line_items_created: int
     summary_saved: bool
     inventory_updates: list[InventoryUpdate]
