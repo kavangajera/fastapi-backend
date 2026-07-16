@@ -66,6 +66,9 @@ TABLE_PREFIXES: dict[str, str] = {
     "documents": "DOC",
     "activity_log": "ACT",
     "refill_dismissals": "RFD",
+    "plans": "PLN",
+    "subscriptions": "SUB",
+    "subscription_events": "SEV",
 }
 
 

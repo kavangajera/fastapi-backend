@@ -17,12 +17,14 @@ from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
+from core.enums import Feature
 from middlewares.auth import auth_incoming_req
 from models import RefillDismissal
 from schemas.refills import RefillDismissResponse, RefillListResponse, RefillRow
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
+from services.feature_gate import ensure_feature
 from services.pharmacy_authz import ensure_pharmacy_access
 from services.refill_service import build_refill_list
 
@@ -52,6 +54,7 @@ async def list_refills(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.REFILL_ANALYSIS_BILLINGS)
     entries = await build_refill_list(db, medical_store_id=ph_id)
 
     if status:
@@ -96,6 +99,7 @@ async def dismiss_refill(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.REFILL_ANALYSIS_BILLINGS)
 
     ndc_value = drug_ndc or ""
     # Idempotent: ignore if the dismissal already exists.

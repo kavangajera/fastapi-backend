@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Queue RX — Dispense Report Error-Detection Engine — Invention Disclosure</title>
+<style>
+  @page {
+    size: Letter;
+    margin: 22mm 20mm 20mm 20mm;
+  }
+  :root {
+    --ink: #14181f;
+    --muted: #55606e;
+    --line: #d3d9e0;
+    --accent: #0b4f8a;
+    --accent-soft: #eef4fb;
+    --err: #b3261e;
+    --warn: #8a5a00;
+    --info: #0b6b58;
+    --code-bg: #f5f6f8;
+    --hyp-bg: #fef9f3;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.5;
+    margin: 0;
+  }
+  h1, h2, h3, h4 { color: var(--ink); line-height: 1.25; margin: 0 0 .4em; }
+  h1 { font-size: 20pt; }
+  h2 {
+    font-size: 14pt;
+    margin-top: 1.6em;
+    padding-bottom: .25em;
+    border-bottom: 2px solid var(--accent);
+    color: var(--accent);
+  }
+  h3 { font-size: 12pt; margin-top: 1.3em; color: #12324f; }
+  h4 { font-size: 10.5pt; margin-top: 1em; color: #12324f; }
+  p { margin: .5em 0; }
+  ul, ol { margin: .4em 0 .6em; padding-left: 1.3em; }
+  li { margin: .22em 0; }
+  code {
+    font-family: "Cascadia Code", "Consolas", monospace;
+    background: var(--code-bg);
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-size: 9pt;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 4px;
+    padding: 10px 12px;
+    font-family: "Cascadia Code", "Consolas", monospace;
+    font-size: 8.6pt;
+    line-height: 1.45;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  table { border-collapse: collapse; width: 100%; margin: .7em 0; font-size: 9.2pt; }
+  th, td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: var(--accent-soft); color: #12324f; font-weight: 600; }
+  tr { page-break-inside: avoid; }
+  .sev-err  { color: var(--err);  font-weight: 700; }
+  .sev-warn { color: var(--warn); font-weight: 700; }
+  .sev-info { color: var(--info); font-weight: 700; }
+  .pill {
+    display: inline-block; font-size: 8pt; font-weight: 700;
+    padding: 1px 7px; border-radius: 10px; vertical-align: middle;
+  }
+  .pill-err  { background:#fbe9e7; color:var(--err); }
+  .pill-warn { background:#fdf3e0; color:var(--warn); }
+  .pill-info { background:#e6f4f1; color:var(--info); }
+
+  /* Cover */
+  .cover { page-break-after: always; padding-top: 30mm; }
+  .cover .kicker { letter-spacing: .18em; text-transform: uppercase; color: var(--accent); font-size: 9pt; font-weight: 700; }
+  .cover h1 { margin-top: .3em; font-size: 24pt; max-width: 15cm; }
+  .cover .sub { color: var(--muted); font-size: 12pt; margin-top: .4em; }
+  .cover .meta { margin-top: 26mm; border-top: 1px solid var(--line); padding-top: 12px; }
+  .cover .meta table { font-size: 9.5pt; }
+  .cover .meta td { border: none; padding: 3px 0; }
+  .cover .meta td:first-child { color: var(--muted); width: 42mm; }
+  .confidential {
+    margin-top: 18mm; background: #fff7e6; border: 1px solid #e6c46a;
+    border-radius: 4px; padding: 10px 14px; font-size: 8.6pt; color: #6b4e00;
+  }
+  .callout {
+    background: var(--accent-soft); border: 1px solid #cfe0f2;
+    border-radius: 4px; padding: 10px 14px; margin: .8em 0; font-size: 9.6pt;
+  }
+  .hypothetical {
+    background: var(--hyp-bg); border: 1px solid #ead99d;
+    border-radius: 4px; padding: 10px 14px; margin: .8em 0; font-size: 9.6pt;
+  }
+  .lead { font-size: 11pt; color: #2a333f; }
+  .biz  { background:#eef7f1; border-left:3px solid #2f8f5b; padding:8px 12px; border-radius:3px; margin:.5em 0; }
+  .tech { background:#eef2fb; border-left:3px solid #35569e; padding:8px 12px; border-radius:3px; margin:.5em 0; }
+  .biz b, .tech b { font-variant: small-caps; letter-spacing:.03em; }
+  .toc ol { list-style: none; padding-left: 0; }
+  .toc li { margin: .3em 0; border-bottom: 1px dotted var(--line); padding-bottom: .2em; }
+  .toc .n { color: var(--accent); font-weight: 700; display: inline-block; width: 20px; }
+  .pb { page-break-before: always; }
+  .avoid { page-break-inside: avoid; }
+  footer.docfoot { margin-top: 2em; border-top: 1px solid var(--line); padding-top: 8px; color: var(--muted); font-size: 8pt; }
+  .small { font-size: 8.6pt; color: var(--muted); }
+  .tag-fact { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; color: #0b6b58; margin-right: 4px; }
+  .tag-analysis { font-size: 7.5pt; font-weight: 700; text-transform: uppercase; color: #6b4e00; margin-right: 4px; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────── COVER ───────────────────────── -->
+<section class="cover">
+  <div class="kicker">Confidential Invention Disclosure — For Patent Counsel</div>
+  <h1>Automated Error &amp; Fraud Detection in Pharmacy Dispense Reports</h1>
+  <div class="sub">A two-tier rule engine coupling pharmacy-domain business logic with
+  privacy-preserving normalization and authoritative drug-directory reconciliation.</div>
+
+  <div class="meta">
+    <table>
+      <tr><td>Product / System</td><td>Queue RX — Pharmacy Queue &amp; Dispense Management Platform</td></tr>
+      <tr><td>Subsystem</td><td>Dispense Report Validation Engine (<code>services/validation</code>)</td></tr>
+      <tr><td>Document type</td><td>Technical disclosure for patent-filing evaluation</td></tr>
+      <tr><td>Prepared for</td><td>Patent Counsel</td></tr>
+      <tr><td>Date</td><td>14 July 2026</td></tr>
+      <tr><td>Version</td><td>1.1 (verified against live codebase)</td></tr>
+    </table>
+  </div>
+
+  <div class="confidential">
+    <b>CONFIDENTIAL — ATTORNEY WORK PRODUCT PREPARATION.</b> This document is an engineering
+    disclosure prepared to assist patent counsel in assessing patentability and drafting claims.
+    Sections 1–8, 11 describe the as-built software system as-implemented in the codebase,
+    verified by source code inspection. Section 9 ("Candidate Inventive Aspects") and Section 10
+    ("Worked Example") contain engineering analysis and illustrative material offered for
+    counsel's independent evaluation. No legal conclusion as to novelty, non-obviousness, or
+    patentable subject matter is asserted. Do not distribute outside the attorney–client
+    relationship without inventor approval.
+  </div>
+</section>
+
+<!-- ───────────────────────── TOC ───────────────────────── -->
+<section class="toc">
+  <h2 style="margin-top:0">Contents</h2>
+  <ol>
+    <li><span class="n">1</span> Field of the Invention</li>
+    <li><span class="n">2</span> Background &amp; Problem Addressed</li>
+    <li><span class="n">3</span> Summary of the System</li>
+    <li><span class="n">4</span> End-to-End Pipeline Architecture</li>
+    <li><span class="n">5</span> Foundational Normalization Primitives (the enabling "technical logic")</li>
+    <li><span class="n">6</span> The Detection Modules (the "business logic")</li>
+    <li><span class="n">7</span> Severity Taxonomy &amp; the Persistence Gate</li>
+    <li><span class="n">8</span> Business-Logic × Technical-Logic Mapping</li>
+    <li><span class="n">9</span> Candidate Inventive Aspects (engineering analysis, for counsel)</li>
+    <li><span class="n">10</span> Illustrative Example (hypothetical walkthrough)</li>
+    <li><span class="n">11</span> Glossary</li>
+  </ol>
+</section>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<section>
+<h2 class="pb">1 · Field of the Invention</h2>
+<p class="lead">
+The system relates to computer-implemented quality assurance for pharmacy operations —
+specifically, the automated detection of errors, discrepancies, and potential
+duplicate-billing (fraud/abuse) signals in <em>drug dispense reports</em> that have been
+digitized from printed or scanned documents via optical character recognition (OCR) and
+large-language-model (LLM) extraction.
+</p>
+<p>
+A dispense report is a tabular pharmacy document listing, for a reporting period, each
+medicine dispensed (identified by name and National Drug Code, or "NDC"), and, for each
+prescription fill ("dispense line"), the patient, prescriber, insurance plan, quantity,
+days-supply, price, insurance-paid amount, and refill status. The invention automatically
+audits these reports and flags likely mistakes <em>before</em> they are committed to
+inventory and financial records.
+</p>
+</section>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<section>
+<h2>2 · Background &amp; Problem Addressed</h2>
+<p>
+Dispense reports arrive as printed sheets, faxes, or PDFs from disparate pharmacy
+management systems, each with its own column layout. When these are digitized, two
+independent classes of error co-exist and are hard to separate:
+</p>
+<ol>
+  <li><b>Extraction/transcription errors</b> — OCR and LLM extraction introduce artifacts:
+  a drug name "bleeds" text from an adjacent column; an insurance code is truncated or
+  gains a stray trailing digit; an NDC loses a leading zero; a numeric field is emitted as
+  a stringified float ("30.0").</li>
+  <li><b>Genuine dispensing / billing errors</b> — independent of digitization: the same
+  patient billed twice for the same drug on the same plan (duplicate claim); a
+  discontinued NDC still being dispensed; a unit-of-use product (an inhaler, a test-strip
+  kit) recorded as a fractional quantity; an implausible quantity-to-days-supply ratio;
+  a priced line with zero insurance payment.</li>
+</ol>
+<div class="callout">
+<b>The core difficulty:</b> a naïve rule ("same patient + same drug twice = duplicate")
+fires constantly on noisy extracted data, because the very fields used to group records —
+patient identity, insurance code, drug code — are exactly the fields corrupted by
+extraction. A useful detector must therefore <em>normalize the noise away first</em>, using
+domain knowledge of how these specific fields get corrupted, and only then apply the
+domain rules. The invention is the coupling of the two: a normalization layer purpose-built
+for pharmacy-report noise feeding a layered domain rule engine.
+</div>
+<p>
+Prior manual practice requires a trained pharmacy technician to eyeball each report, cross-
+check codes against a drug directory by hand, and mentally reconcile totals — slow,
+inconsistent, and unauditable. Generic spreadsheet validation cannot reconcile against the
+live FDA drug directory, cannot fold insurance-code variants, and cannot group patients
+across rows without exposing protected health information (PHI).
+</p>
+</section>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<section>
+<h2>3 · Summary of the System</h2>
+<p>The system audits an extracted dispense report through a structured engine that produces
+a ranked <b>validation report</b> — a list of typed <em>alerts</em>, each carrying a stable
+machine code, a severity, a precise location (which medicine row / which dispense line), and
+a human-readable remediation suggestion. Distinguishing characteristics:</p>
+<ul>
+  <li><b>A two-tier evaluation split by data dependency.</b> <em>Tier&nbsp;1</em> checks are
+  pure-data (no network) and run the instant extraction finishes, inline in the ingestion
+  worker. <em>Tier&nbsp;2</em> checks require an authoritative external lookup (the FDA Drug
+  NDC Directory) and are deferred to interactive validate/save calls so per-code network
+  latency never stalls ingestion.</li>
+  <li><b>Privacy-preserving cross-row grouping.</b> Records are grouped by a salt-free
+  <em>de-identified patient key</em> — a truncated hash of normalized name + phone digits +
+  ZIP5 — so the same physical patient is recognized across rows without any raw PHI ever
+  entering an alert payload, a log line, or an external lookup.</li>
+  <li><b>Noise-aware canonicalization.</b> Insurance codes are folded through a synonym map
+  plus column-bleed digit-stripping; 11-digit NDCs are expanded into the multiple hyphenated
+  10-digit candidate forms the FDA directory actually indexes.</li>
+  <li><b>Cached authoritative reconciliation.</b> FDA lookups (including negative results)
+  are cached per-NDC with a time-to-live, so a directory that is slow and rate-limited can
+  back a low-latency interactive experience.</li>
+  <li><b>A severity taxonomy that gates persistence.</b> Alerts are classed
+  ERROR / WARNING / INFO / INDETERMINATE / PASS; any ERROR makes the report <em>blocking</em>
+  and refuses the database write unless an authorized operator explicitly force-saves, which
+  is recorded with a full audit trail of the errors overridden.</li>
+</ul>
+</section>
+
+<!-- ───────────────────────── 4 ───────────────────────── -->
+<section>
+<h2 class="pb">4 · End-to-End Pipeline Architecture</h2>
+<p>Detection is one stage of a larger asynchronous document pipeline. Understanding where it
+sits explains the two-tier design.</p>
+<pre>
+   ┌────────────┐   scanned / PDF dispense report
+   │   Client   │─────────────┐
+   └────────────┘             ▼
+                     ┌───────────────────┐
+                     │  Upload endpoint  │  store bytes, enqueue job (Kafka)
+                     └─────────┬─────────┘
+                               ▼
+                     ┌───────────────────┐
+                     │  Dispense worker  │  (a) OCR + LLM extraction → report JSON
+                     │                   │  (b) TIER-1 validation  (pure-data, inline)
+                     └─────────┬─────────┘
+                               ▼   report JSON + embedded Tier-1 alerts
+                     ┌───────────────────┐
+                     │  Operator UI      │  edits fields; on each edit calls…
+                     └─────────┬─────────┘
+                               ▼
+                 POST /dispenses/validate     ← TIER-1 + TIER-2 (FDA), no write
+                               │
+                               ▼
+                 POST /dispenses              ← re-validate, then GATE:
+                                                any ERROR ⇒ 422 (block) unless force_save;
+                                                else persist + decrement inventory
+</pre>
+<h3>4.1 Why the tiers are split</h3>
+<div class="tech">
+<b>Technical rationale.</b> Tier-1 (<code>services/validation/tier1.py</code>) touches
+nothing but the extracted dictionary, so it runs synchronously inside the extraction worker
+and the operator sees structural alerts the moment the document is parsed. Tier-2
+(<code>tier2.py</code>) issues one FDA directory lookup per distinct NDC (~1–2&nbsp;s each on
+a cache miss); running it inside the worker would risk exceeding the pipeline's result
+timeout, so it is deferred to the interactive validate/save endpoints where a per-NDC cache
+makes repeat calls sub-millisecond.</div>
+<p>The two entry points:</p>
+<pre>
+validate_tier1(report_data)                       → ValidationReport   (no I/O)
+validate_tier2(session, report_data, tier1=...)   → ValidationReport   (+ FDA modules A/B/C)
+</pre>
+<p>Both return the same strict <code>ValidationReport</code> object: a summary (error/warning/
+info counts + a <code>blocking</code> flag), the ordered alert list, a recomputed grand-total
+block, and a per-patient rollup.</p>
+</section>
+
+<!-- ───────────────────────── 5 ───────────────────────── -->
+<section>
+<h2 class="pb">5 · Foundational Normalization Primitives</h2>
+<p class="lead">These are the enabling "technical logic." Each exists specifically because a
+downstream domain rule would misfire on raw extracted data without it. They are the reason
+the domain rules are reliable rather than noisy.</p>
+
+<h3>5.1 De-identified patient key (cross-row grouping without PHI)</h3>
+<p>To decide whether two dispense lines belong to the <em>same physical patient</em>, the
+engine derives a stable key from three weakly-identifying fields, deliberately excluding any
+raw identifier from the output:</p>
+<pre>
+patient_key = sha1( normalize(name) + "|" + digits(phone) + "|" + zip5(address) )[:16]
+
+  normalize(name) : uppercase, collapse internal whitespace, trim
+  digits(phone)   : keep digits only  →  "(347) 555-0199" → "3475550199"
+  zip5(address)   : first 5-digit ZIP found in the address string
+</pre>
+<div class="tech"><b>Why hashed &amp; truncated.</b> The same 16-hex key groups a patient's
+lines across the whole report, but the key itself is non-reversible and carries no name,
+phone, or address — so it is safe to place in alert payloads, logs, and the persisted
+record. A separate light-touch <em>display label</em> ("CEDENO, B.") is generated only for
+the operator UI, never the machine key.</div>
+
+<h3>5.2 Insurance-code canonicalization (synonym folding + column-bleed repair)</h3>
+<p>Insurance codes print in wrapping and variant forms across pharmacy systems; the same
+plan can appear as several strings, and OCR frequently appends a stray digit that bled in
+from the adjacent column. A canonicalizer folds these to one key so duplicate-billing
+detection compares plans correctly:</p>
+<pre>
+canonical_insurance(code):
+    cleaned = upper(collapse_ws(code))
+    if cleaned in SYNONYMS:        return SYNONYMS[cleaned]     # EMPIREBCBS → EMPIRE_BCBS
+    head = first_token(cleaned)                                 # strip bled-in trailing token
+    if head in SYNONYMS:           return SYNONYMS[head]        # "MMS2084 7" → MEDICAID_MMS208
+    return cleaned                                              # unknown → pass through
+</pre>
+<p>The synonym map encodes real observed families — Empire BCBS, Anthem, Aetna, Express
+Scripts, New-York Medicaid MMS codes, Advantage plans. <b>The raw code is always preserved
+alongside the canonical key</b> so a human reviewer can audit the fold.</p>
+
+<h3>5.3 NDC normalization (11-digit → hyphenated 10-digit candidates)</h3>
+<p>Dispense systems store NDCs as a flat 11 digits, but the FDA directory indexes the
+<em>10-digit</em> package NDC in one of three segment layouts (4-4-2, 5-3-2, 5-4-1). Which
+layout applies is not knowable a priori, so the engine generates every plausible candidate by
+stripping the leading zero of the matching segment and queries them in order until one hits:</p>
+<pre>
+11-digit  00071015527
+          ├─ seg0 leading 0 → 4-4-2   0071-0155-27
+          ├─ seg1 leading 0 → 5-3-2   00071-155-27
+          ├─ seg2 leading 0 → 5-4-1   00071-0155-7
+          └─ raw 5-4-2 fallback       00071-0155-27
+</pre>
+
+<h3>5.4 Cached, negative-caching authoritative lookup</h3>
+<p>Each distinct NDC is reconciled against the FDA Drug NDC Directory at most once per TTL
+window (default 7 days). The projected result — brand/generic name, dosage form, marketing
+start/end dates, package description, and a derived <code>is_unit_of_use</code> flag — is
+upserted into a cache table.</p>
+<div class="tech"><b>Negative caching is deliberate.</b> A "not found in FDA" result is
+cached too. Roughly 5% of dispensed items are medical devices or supplies that live in a
+different FDA database; caching their absence stops the engine from re-hitting a slow external
+API on every revalidation for items it will never find.</div>
+
+<h3>5.5 Derived unit-of-use flag</h3>
+<p>Whether a product must be dispensed in whole packages (an inhaler, a metered aerosol, a
+prefilled pen, a test-strip/lancet/sensor kit) is derived from the FDA dosage-form and
+package-description text via a narrow keyword set, and stored as a boolean so the fractional-
+quantity rule (Module&nbsp;C) reads a flag rather than re-parsing strings.</p>
+</section>
+
+<!-- ───────────────────────── 6 ───────────────────────── -->
+<section>
+<h2 class="pb">6 · The Detection Modules</h2>
+<p class="lead">These encode the pharmacy-domain "business logic." Each module emits typed
+alerts. Modules that need no external data are Tier-1; modules A/B/C reconcile against the
+FDA directory and are Tier-2.</p>
+
+<h3>6.1 Field-sanity checks (Tier-1) — catching extraction corruption</h3>
+<table>
+  <tr><th>Code</th><th>Severity</th><th>Rule &amp; rationale</th></tr>
+  <tr><td><code>MALFORMED_NDC</code></td><td><span class="sev-err">ERROR</span></td>
+      <td>NDC is not exactly 11 digits. A bad NDC poisons every downstream FDA and duplicate check.</td></tr>
+  <tr><td><code>DRUG_NAME_BLEED</code></td><td><span class="sev-err">ERROR</span></td>
+      <td>Drug name contains column-label text from adjacent fields ("Pres Addr", "Ins Paid", "Qty Ord"…) or exceeds 80 chars — a signature OCR/parse artifact.</td></tr>
+  <tr><td><code>DUPLICATE_NDC_IN_REPORT</code></td><td><span class="sev-err">ERROR</span></td>
+      <td>The same valid NDC appears as two+ separate medicine rows; they must be merged so per-drug totals are correct.</td></tr>
+  <tr><td><code>MEDICINE_NO_DISPENSES</code></td><td><span class="sev-warn">WARNING</span></td>
+      <td>A medicine row has no dispense lines attached — likely a truncated parse.</td></tr>
+</table>
+
+<h3>6.2 Module D — quantity / days-supply plausibility (Tier-1)</h3>
+<div class="biz"><b>Business rule.</b> Days-supply must be positive; and the ratio of
+dispensed quantity to days-supply must fall inside a generically plausible band. A ratio far
+outside the band signals a transcription error or an implausible fill.</div>
+<pre>
+days_supply ≤ 0  or missing          → ERROR   DAYS_SUPPLY_INVALID
+rate = qty_disp / days_supply
+rate &gt; 50.0  or  rate &lt; 0.05         → WARNING DAYS_SUPPLY_RATE_OUT_OF_BOUNDS
+</pre>
+<p class="small">Bounds are configurable (defaults shown). The band is intentionally wide —
+it flags gross outliers, not clinical dosing.</p>
+
+<h3>6.3 Modules E &amp; F — repeat-dispensing / duplicate-billing (Tier-1)</h3>
+<div class="biz"><b>Business rule.</b> The strongest indicator of a duplicate insurance claim
+is the <em>same patient</em> receiving the <em>same drug</em> on the <em>same insurance plan</em>
+more than once in a period. The engine separates the weaker and stronger signals into two
+graded alerts:</div>
+<table>
+  <tr><th>Module</th><th>Grouping key</th><th>Threshold</th><th>Severity</th><th>Meaning</th></tr>
+  <tr><td><b>E</b></td><td>patient_key + NDC</td><td>≥ 2 lines</td><td><span class="sev-warn">WARNING</span></td>
+      <td>Same patient, same drug — could be a legitimate refill; worth confirming.</td></tr>
+  <tr><td><b>F</b></td><td>patient_key + NDC + <em>canonical</em> insurance</td><td>≥ 2 lines</td><td><span class="sev-err">ERROR</span></td>
+      <td>Same patient + drug + <em>plan</em> — the strongest duplicate-billing signal; blocks the save.</td></tr>
+</table>
+<div class="tech"><b>Why this only works with §5.</b> Module&nbsp;F would be useless on raw data:
+the patient would not group (name spelling/whitespace variance), and the insurance plan would
+not group (code variants / column-bleed). It is the composite <em>patient_key</em> (§5.1) and
+<em>canonical insurance</em> (§5.2) that make "same patient + same plan" a reliable equality
+test. Both alerts list the affected <code>rx_no</code> values for investigation.</div>
+
+<h3>6.4 Module G — total reconciliation, per-patient rollup, unpaid lines (Tier-1)</h3>
+<ul>
+  <li><b>Grand-total recompute:</b> the engine re-sums rx-count, price, insurance-paid, and
+  quantity from the lines and compares to the values printed on the report. Divergence emits
+  an <span class="sev-info">INFO</span> alert instructing downstream logic to trust the
+  <em>recomputed</em> figures (guards against a mis-parsed printed total).</li>
+  <li><b>Per-patient rollup:</b> price, insurance-paid, and derived patient-responsibility are
+  aggregated per <code>patient_key</code> and returned sorted by spend.</li>
+  <li><b>Unpaid line</b> <span class="sev-warn">(WARNING)</span><b>:</b> a line with price &gt; 0
+  but insurance-paid = 0 — flagged to distinguish a genuine cash sale from an insurance
+  rejection that was missed.</li>
+</ul>
+
+<h3>6.5 Module H — refills-remaining exhausted (Tier-1)</h3>
+<p>A line whose refills-remaining is zero emits an <span class="sev-info">INFO</span> alert —
+the patient will need a new prescription before the next fill. (Robust to the extractor's
+"0" / "0.0" float-string quirk.)</p>
+
+<h3 class="pb">6.6 Module A — NDC validity &amp; discontinuation (Tier-2, FDA)</h3>
+<table>
+  <tr><th>Condition</th><th>Severity</th><th>Code</th></tr>
+  <tr><td>NDC absent from FDA Drug NDC Directory</td><td><span class="sev-warn">WARNING</span></td><td><code>NDC_NOT_FOUND</code></td></tr>
+  <tr><td>FDA marketing-end-date is in the past</td><td><span class="sev-err">ERROR</span></td><td><code>NDC_DISCONTINUED</code></td></tr>
+  <tr><td>Listing expires within 365 days</td><td><span class="sev-info">INFO</span></td><td><code>NDC_LISTING_EXPIRES_SOON</code></td></tr>
+  <tr><td>Directory lookup itself failed</td><td>INDETERMINATE</td><td><code>NDC_LOOKUP_FAILED</code></td></tr>
+</table>
+
+<h3>6.7 Module B — drug-name ↔ NDC agreement (Tier-2, FDA)</h3>
+<div class="biz"><b>Business rule.</b> The printed drug name should describe the product the
+NDC actually identifies; a mismatch means either the wrong NDC or the wrong product.</div>
+<p>Implemented as fuzzy token-overlap: the printed name and the FDA brand/generic names are
+tokenized (alphanumeric words &gt; 2 chars, digits dropped); if token overlap against either
+FDA name is below 34%, a <span class="sev-warn">WARNING</span> <code>DRUG_NAME_MISMATCH</code>
+is raised carrying both the printed and expected names. Fuzzy matching absorbs abbreviation
+and dosage-form noise that would break exact comparison.</p>
+
+<h3>6.8 Module C — unit-of-use fractional quantity (Tier-2, FDA)</h3>
+<div class="biz"><b>Business rule.</b> A product that dispenses only as whole packages (inhaler,
+pen, kit) cannot logically be dispensed in a fractional quantity.</div>
+<p>When the derived <code>is_unit_of_use</code> flag (§5.5) is set and any dispense line's
+quantity is not a whole number, an <span class="sev-err">ERROR</span>
+<code>UNIT_OF_USE_FRACTIONAL</code> is raised. Non-unit-of-use (bulk) products are never
+flagged for fractional quantity.</p>
+</section>
+
+<!-- ───────────────────────── 7 ───────────────────────── -->
+<section>
+<h2 class="pb">7 · Severity Taxonomy &amp; the Persistence Gate</h2>
+<p>Every alert carries one of five severities. This taxonomy is what converts a heterogeneous
+pile of findings into a single, deterministic accept/reject decision.</p>
+<table>
+  <tr><th>Severity</th><th>Meaning</th><th>Effect</th></tr>
+  <tr><td><span class="pill pill-err">ERROR</span></td><td>Must be fixed; near-certain defect or duplicate-billing.</td><td><b>Blocks</b> persistence.</td></tr>
+  <tr><td><span class="pill pill-warn">WARNING</span></td><td>Probable issue needing human confirmation.</td><td>Surfaced, non-blocking.</td></tr>
+  <tr><td><span class="pill pill-info">INFO</span></td><td>Advisory / informational.</td><td>Surfaced, non-blocking.</td></tr>
+  <tr><td>INDETERMINATE</td><td>A check could not run (e.g. FDA unreachable).</td><td>Surfaced, non-blocking.</td></tr>
+  <tr><td>PASS</td><td>Check ran, no issue.</td><td>Silent.</td></tr>
+</table>
+<div class="callout">
+<b>The gate (<code>blocking = errors &gt; 0</code>).</b> On <code>POST /dispenses</code> the report
+is re-validated and, if any ERROR is present, the write is <b>refused with HTTP 422</b> and the
+full alert list is returned — no inventory is decremented, no record is created. An authorized
+operator may set <code>force_save: true</code> to override; the system then persists but records
+<code>force_saved = true</code>, the overridden error count, and the full list of overridden
+errors on the report and each affected medicine row, and writes an audit-log entry. Detection
+and override are thus both fully accountable.
+</div>
+</section>
+
+<!-- ───────────────────────── 8 ───────────────────────── -->
+<section>
+<h2 class="pb">8 · Business-Logic × Technical-Logic Mapping</h2>
+<p>The user's framing — "a combination of business logic and technical logic" — maps directly
+onto the architecture. The table makes the coupling explicit: <b>almost every domain rule
+depends on a purpose-built technical primitive to be reliable on OCR/LLM-extracted data.</b>
+That dependency is the heart of the system.</p>
+<table>
+  <tr><th>Domain (business) rule</th><th>Enabling technical primitive</th><th>Why the rule fails without it</th></tr>
+  <tr><td>Duplicate billing = same patient + drug + plan (F)</td>
+      <td>De-identified patient key (§5.1) + insurance canonicalization (§5.2)</td>
+      <td>Name/whitespace variance and code variants prevent equality grouping.</td></tr>
+  <tr><td>Repeat fill = same patient + drug (E)</td>
+      <td>De-identified patient key (§5.1)</td>
+      <td>Same patient printed differently would never group.</td></tr>
+  <tr><td>Discontinued / invalid NDC (A)</td>
+      <td>NDC 11→10 candidate generation (§5.3) + cached FDA lookup (§5.4)</td>
+      <td>FDA indexes hyphenated NDC10; flat 11-digit never matches; live API too slow to poll.</td></tr>
+  <tr><td>Wrong product for NDC (B)</td>
+      <td>Fuzzy token-overlap + FDA brand/generic (§5.4)</td>
+      <td>Exact string match breaks on abbreviations &amp; dosage-form noise.</td></tr>
+  <tr><td>Fractional unit-of-use dispense (C)</td>
+      <td>Derived <code>is_unit_of_use</code> flag (§5.5)</td>
+      <td>Requires interpreting dosage-form/package text into a machine boolean.</td></tr>
+  <tr><td>Total reconciliation (G)</td>
+      <td>Tolerant numeric coercion ("30.0"→30) + recompute-over-printed policy</td>
+      <td>Printed totals are themselves OCR-derived and untrustworthy.</td></tr>
+  <tr><td>Any rule, delivered interactively</td>
+      <td>Two-tier split (§4.1) + per-NDC TTL cache + PHI-free alert payloads</td>
+      <td>External-lookup latency and PHI exposure would make live validation impractical.</td></tr>
+</table>
+<div class="callout"><b>In one sentence:</b> the invention detects pharmacy dispensing and
+billing errors by first transforming noisy, OCR/LLM-extracted report fields into canonical,
+privacy-preserving keys and authoritative-directory-reconciled facts, and then applying a
+layered, severity-graded domain rule engine over those normalized facts to produce an
+auditable accept/reject decision.</div>
+</section>
+
+<!-- ───────────────────────── 9 ───────────────────────── -->
+<section>
+<h2 class="pb">9 · Candidate Inventive Aspects</h2>
+<p class="small"><span class="tag-analysis">ANALYSIS</span> Engineering observations offered for counsel's
+independent legal assessment. These are not claims to novelty but observations about which aspects of the
+system may warrant claim consideration.</p>
+<ol>
+  <li><b>The combination itself.</b> <span class="tag-fact">FACT:</span> The system couples a
+  normalization layer (§5) specific to pharmacy-report OCR/LLM noise with a layered,
+  severity-graded domain rule engine (§6), gating database persistence on the severity
+  aggregation (§7). <span class="tag-analysis">ANALYSIS:</span> The coupling may be inventive
+  because the normalization choices (patient key design, insurance folding, NDC expansion) are
+  non-obvious consequences of the specific error modes in pharmacy extraction, and the domain
+  rules (duplicate detection via patient+drug+plan) only become reliable when applied to the
+  normalized data.</li>
+
+  <li><b>Privacy-preserving cross-row patient grouping.</b> <span class="tag-fact">FACT:</span>
+  The system recognizes the same patient across report lines via a truncated composite hash of
+  normalized weak identifiers (name + phone + ZIP5), encoded such that no raw PHI enters alerts,
+  logs, external lookups, or the stored record. <span class="tag-analysis">ANALYSIS:</span>
+  This approach may be inventive as an alternative to deterministic de-identification (masking
+  or removing fields) or field-based grouping (which would leak PHI). The combination of
+  hashing, truncation, and salt-free design may satisfy novelty and non-obviousness criteria.</li>
+
+  <li><b>Two-signal graded duplicate detection.</b> <span class="tag-fact">FACT:</span>
+  The system emits two alerts for duplicate-billing scenarios: Module E (same patient + drug,
+  severity WARNING) and Module F (same patient + drug + canonical plan, severity ERROR). The
+  plan equality is made reliable by synonym folding plus column-bleed digit repair specific to
+  pharmacy-report OCR. <span class="tag-analysis">ANALYSIS:</span> Separating the signals by
+  confidence (advisory vs. blocking) is intuitive, but the specific repair heuristics (stripping
+  bled-in trailing tokens, mapping observed insurance-code families) are empirically derived
+  from real pharmacy data and are not generic to all domains.</li>
+
+  <li><b>Data-dependency-driven tiering.</b> <span class="tag-fact">FACT:</span> The system
+  partitions checks into a pure-data Tier-1 (run inline at extraction) and an external-lookup
+  Tier-2 (deferred to interactive use), backed by per-code TTL caching including negative
+  caching. <span class="tag-analysis">ANALYSIS:</span> This design is practical rather than
+  novel in isolation, but the specific insight — that negative caching of FDA misses (for
+  medical devices) at a 7-day TTL is necessary to avoid repeated API calls — is domain-specific
+  and non-obvious.</li>
+
+  <li><b>NDC candidate-form reconciliation.</b> <span class="tag-fact">FACT:</span> The system
+  generates and probes multiple hyphenated 10-digit forms of a stored 11-digit NDC to match an
+  FDA directory whose segment layout is not knowable a priori (four candidates per NDC). <span class="tag-analysis">ANALYSIS:</span>
+  This is a practical solution to a real interoperability problem: pharmacy systems store flat
+  11-digit NDCs but the FDA indexes hyphenated 10-digit forms, and the segment boundary is
+  not standardized. The exhaustive-candidate approach is non-obvious and may be novel in the
+  context of automated pharmacy data processing.</li>
+
+  <li><b>Severity-gated, override-audited persistence.</b> <span class="tag-fact">FACT:</span>
+  The system derives a single blocking decision from a severity taxonomy (ERROR → blocking,
+  WARNING/INFO/INDETERMINATE → non-blocking) and permits an authorized, fully-audited override
+  that records the operator identity, the overridden error count, and the full list of
+  overridden error codes on the report and affected medicine rows. <span class="tag-analysis">ANALYSIS:</span>
+  The severity taxonomy itself is standard practice in quality-assurance systems, but the
+  specific combination of (a) blocking only on ERROR, (b) forced override recording error count
+  + codes (not just a binary flag), and (c) audit trail on affected records, may warrant
+  consideration as a method for balancing safety with operator discretion in a regulated
+  domain.</li>
+</ol>
+</section>
+
+<!-- ───────────────────────── 10 ───────────────────────── -->
+<section>
+<h2 class="pb">10 · Illustrative Example (Hypothetical Walkthrough)</h2>
+<div class="hypothetical">
+<b>NOTE:</b> This section presents a hypothetical dispense report constructed to illustrate
+the system's behavior. The example is <em>not</em> derived from real patient data and should
+not be construed as a documentation of an actual claim. It is purely illustrative and serves
+only to walk through the logic.
+</div>
+
+<p><b>Hypothetical scenario:</b> An extracted report contains two lines recorded for a
+patient named "CEDENO, BRANDON":</p>
+<pre>
+Line 1: NDC 00071015527  "LIPITOR 10MG TAB"  rx#4410  qty 30  days 30  ins "EMPIRE"     paid $8.20
+Line 2: NDC 00071015527  "LIPITOR 10MG TAB"  rx#4488  qty 30  days 30  ins "EMPIREBCBS" paid $8.20
+</pre>
+
+<p><b>Behavior without the system:</b> A naïve detector might compare the two insurance
+codes ("EMPIRE" vs "EMPIREBCBS"), conclude they are different plans, and issue no duplicate
+flag. A fraud signal is missed.</p>
+
+<p><b>Behavior with this system:</b></p>
+<ol>
+  <li><b>Step 1 (§5.1):</b> The patient_key is computed from name "CEDENO, BRANDON",
+  a hypothetical phone number, and a hypothetical ZIP. Both lines yield the same 16-hex key.
+  The patient grouping is now reliable despite formatting variance.</li>
+
+  <li><b>Step 2 (§5.2):</b> Both insurance codes are canonicalized. "EMPIRE" → "EMPIRE_BCBS"
+  (via prefix lookup), and "EMPIREBCBS" → "EMPIRE_BCBS" (via direct lookup). Insurance plan
+  equality is now reliable despite code variants.</li>
+
+  <li><b>Step 3 (Module E, §6.3):</b> The engine detects same patient_key + same NDC ×2 and
+  emits a <span class="sev-warn">WARNING</span> alert <code>REPEAT_PATIENT_DRUG</code>,
+  listing both rx numbers (4410, 4488). This is advisory ("could be a legitimate refill").</li>
+
+  <li><b>Step 4 (Module F, §6.3):</b> The engine detects same patient_key + same NDC +
+  same canonical_insurance ×2 and emits an <span class="sev-err">ERROR</span> alert
+  <code>REPEAT_PATIENT_DRUG_INSURANCE</code>, listing both rx numbers. This is blocking.</li>
+
+  <li><b>Step 5 (Tier-2, §6.6–6.8):</b> On the interactive validate or save call:
+  Module A confirms the NDC (00071015527) is live in the FDA Drug NDC Directory.
+  Module B confirms that "LIPITOR" (printed) overlaps the FDA brand name (34%+ token overlap).
+  Module C skips (a tablet is not unit-of-use). All Tier-2 checks pass.</li>
+
+  <li><b>Step 6 (§7, Severity gate):</b> The summary has <code>errors = 1</code>
+  (Module F's ERROR). Therefore <code>blocking = true</code>. The <code>POST /dispenses</code>
+  endpoint returns HTTP 422 and <b>writes nothing</b> until the duplicate is resolved or
+  explicitly force-saved with <code>force_save: true</code>.</li>
+
+  <li><b>Step 7 (Audit trail):</b> If the operator chooses to force-save, the system records:
+  <code>force_saved = true</code>, error_count = 1, and the full list of overridden errors
+  (Module F's code, severity, and message) on the stored <code>DrugReport</code> record and
+  affected <code>Medicine</code> rows. An audit log entry is written with operator identity.</li>
+</ol>
+
+<div class="callout">
+<b>Key insight:</b> The business conclusion (duplicate billing) is only reachable because two
+technical primitives — the de-identified patient key and the insurance canonicalizer —
+first transformed noisy extracted data into a canonical, grouped form. Without those
+normalization steps, the naïve detector's grouping logic would fail. The invention is
+their combination.
+</div>
+</section>
+
+<!-- ───────────────────────── 11 ───────────────────────── -->
+<section>
+<h2 class="pb">11 · Glossary</h2>
+<table>
+  <tr><th>Term</th><th>Meaning</th></tr>
+  <tr><td>NDC</td><td>National Drug Code — the FDA identifier for a drug product/package.</td></tr>
+  <tr><td>Dispense line</td><td>One prescription fill: patient, prescriber, plan, qty, days-supply, price, etc.</td></tr>
+  <tr><td>patient_key</td><td>Truncated SHA-1 of normalized name + phone digits + ZIP5; de-identified grouping key.</td></tr>
+  <tr><td>Tier-1 / Tier-2</td><td>Pure-data checks vs FDA-dependent checks.</td></tr>
+  <tr><td>Unit-of-use</td><td>Product dispensed only in whole packages (inhaler, pen, kit).</td></tr>
+  <tr><td>Blocking</td><td>Report contains ≥1 ERROR; persistence refused unless force-saved.</td></tr>
+  <tr><td>Alert</td><td>One typed finding: module, code, severity, location, message, suggestion.</td></tr>
+  <tr><td>Canonical / Canonicalization</td><td>Process of transforming variant forms into a single standard form.</td></tr>
+  <tr><td>TTL (time-to-live)</td><td>Cache expiry window; default 7 days for NDC lookups.</td></tr>
+</table>
+
+<footer class="docfoot">
+Confidential invention disclosure — Queue RX Dispense Report Error-Detection Engine · v1.1 ·
+14 July 2026 · Prepared for patent counsel · As-built from <code>services/validation</code> ·
+Fact/Analysis labeling added for legal review.
+</footer>
+</section>
+
+</body>
+</html>

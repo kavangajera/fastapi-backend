@@ -21,8 +21,11 @@ from routes.inventory import router as inventory_router
 from routes.invoice import router as invoice_router
 from routes.invoice_save import router as invoice_save_router
 from routes.monitor import router as monitor_router
+from routes.admin_subscription import router as admin_subscription_router
 from routes.pharmacy_purchase_report import router as report_router
+from routes.reconciliation import router as reconciliation_router
 from routes.refills import router as refills_router
+from routes.subscription import router as subscription_router
 from schemas.response_schema import success_response
 
 setup_logging()
@@ -178,6 +181,9 @@ app.include_router(activity_router)
 app.include_router(audit_report_router)
 app.include_router(refills_router)
 app.include_router(monitor_router)
+app.include_router(subscription_router)
+app.include_router(admin_subscription_router)
+app.include_router(reconciliation_router)
 
 
 @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)

@@ -19,7 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
-from core.enums import UserRole
+from core.enums import Feature, UserRole
 from middlewares.auth import auth_incoming_req
 from models import DrugReport, Medicine
 from models.pharmacy import Pharmacy
@@ -30,6 +30,7 @@ from schemas.pharmacy_purchase_report import (
 )
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.feature_gate import ensure_feature, entitled_store_ids
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/reports", tags=["Drug Dispensed Reports"])
@@ -65,6 +66,8 @@ async def list_reports(
     stmt = select(DrugReport).order_by(DrugReport.id.desc()).offset(skip).limit(limit)
     ph_ids = await _accessible_medical_store_ids(db, user)
     if ph_ids is not None:
+        # Only show reports for stores entitled to dispensary intelligence.
+        ph_ids = await entitled_store_ids(db, ph_ids, Feature.TOP_QUANTITY_DRUG_REPORT)
         stmt = stmt.where(DrugReport.medical_store_id.in_(ph_ids))
     result = await db.execute(stmt)
     reports = [DrugReportListItem.model_validate(r) for r in result.scalars().all()]
@@ -92,6 +95,7 @@ async def get_report(
             detail=f"Report {report_id} not found.",
         )
     await ensure_pharmacy_access(db, user, report.medical_store_id)
+    await ensure_feature(db, report.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
     return success_response(
         DrugReportResponse.model_validate(report), "Report retrieved successfully"
     )
@@ -121,6 +125,7 @@ async def get_medicine_by_ndc(
             detail=f"Report {report_id} not found.",
         )
     await ensure_pharmacy_access(db, user, report_ph)
+    await ensure_feature(db, report_ph, Feature.TOP_QUANTITY_DRUG_REPORT)
 
     result = await db.execute(
         select(Medicine).where(Medicine.report_id == report_id, Medicine.ndc == ndc)
@@ -157,6 +162,7 @@ async def delete_report(
             detail=f"Report {report_id} not found.",
         )
     await ensure_pharmacy_access(db, user, report.medical_store_id)
+    await ensure_feature(db, report.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
     report.IsDeleted = True
     await db.commit()
     return success_response(None, "Report deleted successfully")

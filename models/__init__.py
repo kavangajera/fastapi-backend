@@ -6,8 +6,10 @@ from .invoice import Invoice, InvoiceLineItem, InvoiceSummary
 from .medicine_inventory import MedicineInventory
 from .medicine_ndc_cache import MedicineNdcCache
 from .pharmacy import Pharmacy
+from .plan import Plan
 from .refill_dismissal import RefillDismissal
 from .refresh_token import RefreshToken
+from .subscription import Subscription, SubscriptionEvent
 from .user import User
 
 __all__ = [
@@ -27,4 +29,7 @@ __all__ = [
     "RefillDismissal",
     "Device",
     "RecordCounter",
+    "Plan",
+    "Subscription",
+    "SubscriptionEvent",
 ]

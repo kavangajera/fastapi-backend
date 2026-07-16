@@ -13,13 +13,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
-from core.enums import UserRole
+from core.enums import Feature, UserRole
 from middlewares.auth import auth_incoming_req
 from models import Invoice
 from models.pharmacy import Pharmacy
 from schemas.invoice import InvoiceResponse
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.feature_gate import ensure_feature, entitled_store_ids
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
@@ -50,6 +51,8 @@ async def list_invoices(
     stmt = select(Invoice).order_by(Invoice.id.desc()).offset(skip).limit(limit)
     ph_ids = await _accessible_medical_store_ids(db, user)
     if ph_ids is not None:
+        # Only show invoices for stores entitled to invoice automation.
+        ph_ids = await entitled_store_ids(db, ph_ids, Feature.INVOICE_TO_INVENTORY_AUTO)
         stmt = stmt.where(Invoice.medical_store_id.in_(ph_ids))
     result = await db.execute(stmt)
     invoices = [InvoiceResponse.model_validate(i) for i in result.scalars().all()]
@@ -74,6 +77,7 @@ async def get_invoice(
             detail=f"Invoice {invoice_id} not found.",
         )
     await ensure_pharmacy_access(db, user, invoice.medical_store_id)
+    await ensure_feature(db, invoice.medical_store_id, Feature.INVOICE_TO_INVENTORY_AUTO)
     return success_response(
         InvoiceResponse.model_validate(invoice), "Invoice retrieved successfully"
     )

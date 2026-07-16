@@ -36,6 +36,7 @@ from services.validation.patient_key import (
     derive_patient_key,
     patient_label,
 )
+from services.validation.plan_gate import has, plan_locked_alert
 from services.validation.severity import summarize
 
 _DRUG_BLEED_MARKERS = (
@@ -430,17 +431,48 @@ def _grand_total_recompute(
 # ─────────────────────────────────────────────────────────────────────
 
 
-def validate_tier1(report_data: dict) -> ValidationReport:
-    """Run every pure-data check; return a fully-populated ValidationReport."""
+def validate_tier1(
+    report_data: dict, granted: set[str] | None = None
+) -> ValidationReport:
+    """Run the pure-data checks the store's plan is entitled to.
+
+    ``granted`` = the store's ``Plan.features`` flag set. ``None`` → run every
+    module (Kafka preview / tests). Skipped modules emit a ``PLAN_LOCKED``
+    marker instead of running. See ``plan_gate`` for the flag mapping.
+    """
     alerts: list[Alert] = []
     medicines: list[dict] = report_data.get("medicines") or []
     grand_total_printed: dict = report_data.get("grand_total") or {}
 
+    # FIELD sanity ALWAYS runs — its ERRORs (malformed / duplicate NDC) protect
+    # the inventory-subtraction math on save, independent of any paid feature.
     _check_field_sanity(medicines, alerts)
-    _check_days_supply(medicines, alerts)
-    _check_repeat(medicines, alerts)
-    _check_zero_refills(medicines, alerts)
-    gt, per_patient = _grand_total_recompute(medicines, grand_total_printed, alerts)
+
+    # Module D — days-supply validation (Ultimate).
+    if has(granted, "days_supply_validation"):
+        _check_days_supply(medicines, alerts)
+    else:
+        alerts.append(plan_locked_alert("D", "days_supply_validation"))
+
+    # Modules E + F — repeat / duplicate-claim (Advanced, refill analysis).
+    if has(granted, "refill_analysis_billings"):
+        _check_repeat(medicines, alerts)
+    else:
+        alerts.append(plan_locked_alert("E", "refill_analysis_billings"))
+        alerts.append(plan_locked_alert("F", "refill_analysis_billings"))
+
+    # Module H — zero-refills worklist (Advanced, refill analysis).
+    if has(granted, "refill_analysis_billings"):
+        _check_zero_refills(medicines, alerts)
+    else:
+        alerts.append(plan_locked_alert("H", "refill_analysis_billings"))
+
+    # Module G — billing totals + per-patient analytics (Advanced).
+    if has(granted, "top_quantity_drug_report"):
+        gt, per_patient = _grand_total_recompute(medicines, grand_total_printed, alerts)
+    else:
+        gt, per_patient = None, []
+        alerts.append(plan_locked_alert("G", "top_quantity_drug_report"))
 
     summary = summarize(alerts, tier1=True, tier2=False)
     return ValidationReport(summary=summary, alerts=alerts, grand_total=gt, per_patient=per_patient)

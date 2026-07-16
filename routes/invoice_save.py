@@ -17,8 +17,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
+from core.enums import Feature
 from middlewares.auth import auth_incoming_req
 from models import Invoice, InvoiceLineItem, InvoiceSummary
+from services.feature_gate import ensure_feature
 from services.record_id_service import stamp_on_create
 from schemas.response_schema import Response_Schema, success_response
 from schemas.save_invoice import (
@@ -65,6 +67,7 @@ async def save_invoice(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, body.medical_store_id)
+    await ensure_feature(db, body.medical_store_id, Feature.INVOICE_TO_INVENTORY_AUTO)
 
     db_invoice = Invoice(
         medical_store_id=body.medical_store_id,

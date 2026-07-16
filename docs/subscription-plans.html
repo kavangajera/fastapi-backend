@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QueueRx — Plans & API Entitlements (v2)</title>
+<style>
+  :root{
+    --ink:#1a2230; --muted:#5b6472; --line:#e2e6ec; --soft:#f5f7fa;
+    --brand:#1f6feb; --brand-soft:#eaf1ff;
+    --ok:#188a54; --no:#b23;
+    --crit:#b23; --med:#c47a00; --low:#6b7280;
+  }
+  *{box-sizing:border-box}
+  html{-webkit-print-color-adjust:exact; print-color-adjust:exact}
+  body{font:14px/1.55 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; color:var(--ink); margin:0; background:#fff}
+  .sheet{max-width:840px; margin:0 auto; padding:40px 44px}
+
+  .hint{background:var(--brand-soft); border:1px solid #cfe0ff; color:#1c4fa8; border-radius:8px; padding:10px 14px; font-size:12.5px; margin-bottom:26px}
+  .hint b{color:#123c86}
+
+  header.doc{border-bottom:3px solid var(--brand); padding-bottom:16px; margin-bottom:22px}
+  header.doc .kicker{font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--brand); font-weight:700}
+  header.doc h1{font-size:24px; margin:6px 0 4px; letter-spacing:-.01em}
+  header.doc p{margin:0; color:var(--muted); font-size:13px}
+
+  h2{font-size:16.5px; margin:28px 0 10px; padding-bottom:6px; border-bottom:1px solid var(--line)}
+  h3{font-size:14px; margin:18px 0 6px}
+  h3 code{background:var(--soft); padding:1px 7px; border-radius:5px; font-size:12.5px; color:var(--brand); border:1px solid var(--line)}
+  .tier-tag{font-size:11px; color:var(--muted); font-weight:600}
+  p{margin:8px 0}
+  code{font-family:"SF Mono",Consolas,Menlo,monospace; font-size:12px}
+  p code, li code, td code{background:var(--soft); padding:.5px 5px; border-radius:4px; border:1px solid var(--line)}
+
+  ul{margin:8px 0; padding-left:20px} li{margin:4px 0}
+
+  table{width:100%; border-collapse:collapse; margin:12px 0 4px; font-size:12.4px}
+  th,td{text-align:left; padding:6px 9px; border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{background:var(--soft); border-bottom:2px solid var(--line); font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted)}
+  tbody tr:nth-child(even){background:#fafbfc}
+  td.center,th.center{text-align:center}
+  td.right,th.right{text-align:right; font-variant-numeric:tabular-nums}
+  .method{font-weight:700; font-family:"SF Mono",Consolas,monospace; font-size:11px; color:var(--brand)}
+  .yes{color:var(--ok); font-weight:700}
+  .no{color:var(--no); font-weight:700}
+  .warn{color:var(--med); font-weight:700}
+  .dash{color:var(--muted)}
+
+  .callout{border-radius:8px; padding:12px 16px; margin:12px 0; border:1px solid var(--line); background:var(--soft)}
+  .note{margin:6px 0}
+  .sev{display:inline-block; font-size:10.5px; font-weight:800; letter-spacing:.05em; padding:2px 8px; border-radius:20px; text-transform:uppercase; vertical-align:middle}
+  .sev.crit{background:#fdecec; color:var(--crit)}
+  .sev.med{background:#fdf3e2; color:var(--med)}
+  .sev.low{background:#eef0f3; color:var(--low)}
+
+  footer.doc{margin-top:32px; padding-top:12px; border-top:1px solid var(--line); font-size:11px; color:var(--muted); display:flex; justify-content:space-between}
+
+  h2,h3{break-after:avoid}
+  table,.callout,ul{break-inside:avoid}
+  tr{break-inside:avoid}
+  @page{ size:A4; margin:15mm 13mm }
+  @media print{ .hint{display:none} .sheet{max-width:none; padding:0} body{font-size:10.5pt} }
+</style>
+</head>
+<body>
+<div class="sheet">
+
+  <div class="hint">
+    <b>To save as PDF:</b> press <b>Ctrl/Cmd + P</b> → Destination <b>“Save as PDF”</b> → enable <b>“Background graphics”</b> for the colored tables. This banner is hidden in the PDF.
+  </div>
+
+  <header class="doc">
+    <div class="kicker">QueueRx by PhaBO Labs · Internal Engineering Reference</div>
+    <h1>Plans &amp; API Entitlements <span style="font-weight:400;color:var(--muted);font-size:15px">— as built · v2</span></h1>
+    <p>Aligned to QueueRx Pricing Reference v2 (Basic / Advanced / Ultimate). How the backend actually enforces entitlements.</p>
+  </header>
+
+  <ul>
+    <li><strong>Entitlement is per pharmacy</strong> (<code>medical_store</code>), not per user.</li>
+    <li><strong>Guard:</strong> a gated route calls <code>ensure_feature(db, medical_store_id, Feature.X)</code> after the ownership check → reads the store's active subscription → the plan's <code>features</code> list (DB JSON) → <strong>HTTP 402</strong> if missing/expired or the plan lacks the flag.</li>
+    <li><strong>Flag keys</strong> follow the v2 developer contract (snake_case); the <code>Feature</code> enum holds all 20 boolean flags.</li>
+    <li><strong>Expiry is lazy, no grace period.</strong> Plans are <strong>additive</strong>.</li>
+  </ul>
+
+  <h2>The three plans</h2>
+  <p class="tier-tag">Seeded in migration <code>f7a8b9c0d1e2</code>. Prices stored in cents.</p>
+  <table>
+    <thead>
+      <tr><th>Plan</th><th>Code</th><th class="center">Tier</th><th class="right">Monthly</th><th class="center">Drug recon.</th><th>Positioning</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><strong>Basic</strong></td><td><code>BASIC</code></td><td class="center">1</td><td class="right">$29</td><td class="center">250</td><td>Compliance + inventory fundamentals</td></tr>
+      <tr><td><strong>Advanced</strong></td><td><code>ADVANCED</code></td><td class="center">2</td><td class="right">$179</td><td class="center">250</td><td>Basic + invoice automation + billing analytics</td></tr>
+      <tr><td><strong>Ultimate</strong></td><td><code>ULTIMATE</code></td><td class="center">3</td><td class="right">$349</td><td class="center">∞</td><td>Full platform, unlimited dispensary intelligence</td></tr>
+    </tbody>
+  </table>
+  <p class="tier-tag"><strong>Monthly billing only</strong> (per the v2 sheet — no annual); each period is a fixed 30 days. Cap lives in <code>Plan.limits</code>: <code>{"drug_reconciliation_limit": 250}</code> (Basic/Advanced) or <code>{}</code> (Ultimate).</p>
+
+  <h2>Feature flags → min plan <span class="tier-tag">(v2 developer contract)</span></h2>
+  <table>
+    <thead><tr><th>Flag key</th><th>Min plan</th><th>Backing endpoint today</th></tr></thead>
+    <tbody>
+      <tr><td><code>temp_monitoring_alerts</code></td><td>Basic</td><td class="dash">— hardware pipeline</td></tr>
+      <tr><td><code>compliance_reports</code></td><td>Basic</td><td class="yes">✔ audit report</td></tr>
+      <tr><td><code>inventory_lite</code></td><td>Basic</td><td class="yes">✔ inventory + barcode</td></tr>
+      <tr><td><code>invoice_upload_manual</code></td><td>Basic</td><td class="dash">— manual entry</td></tr>
+      <tr><td><code>expiration_lot_tracking</code></td><td>Basic</td><td class="yes">✔ inventory detail</td></tr>
+      <tr><td><code>overstock_monitoring</code></td><td>Basic</td><td class="dash">— in inventory data</td></tr>
+      <tr><td><code>multi_location_access</code></td><td>Basic</td><td class="dash">— structural (/pharmacy)</td></tr>
+      <tr><td><code>invoice_to_inventory_auto</code></td><td>Advanced</td><td class="yes">✔ invoice process/save</td></tr>
+      <tr><td><code>inventory_reconciliation_auto</code></td><td>Advanced</td><td class="dash">— no endpoint yet</td></tr>
+      <tr><td><code>top_quantity_drug_report</code></td><td>Advanced</td><td class="yes">✔ dispense + reports</td></tr>
+      <tr><td><code>insurance_ndc_analytics</code></td><td>Advanced</td><td class="dash">— report payload</td></tr>
+      <tr><td><code>pack_size_billed_reconciliation</code></td><td>Advanced</td><td class="dash">— in validation</td></tr>
+      <tr><td><code>custom_patient_med_reports</code></td><td>Advanced</td><td class="dash">— report payload</td></tr>
+      <tr><td><code>refill_analysis_billings</code></td><td>Advanced</td><td class="yes">✔ refills</td></tr>
+      <tr><td><code>ndc_claim_mismatch_checks</code></td><td>Ultimate</td><td class="warn">⚠ in validation engine</td></tr>
+      <tr><td><code>days_supply_validation</code></td><td>Ultimate</td><td class="warn">⚠ in validation engine</td></tr>
+      <tr><td><code>discontinued_drug_detection</code></td><td>Ultimate</td><td class="warn">⚠ in validation engine</td></tr>
+      <tr><td><code>invoice_billed_cross_reconciliation</code></td><td>Ultimate</td><td class="dash">— no endpoint yet</td></tr>
+      <tr><td><code>annual_checkup_audit</code></td><td>Ultimate</td><td class="dash">— not built yet</td></tr>
+      <tr><td><code>early_access_features</code></td><td>Ultimate</td><td class="dash">— product flag</td></tr>
+    </tbody>
+  </table>
+  <p class="tier-tag">✔ enforced at an endpoint · — granted, no dedicated gated endpoint · ⚠ computed but not yet separately gated (see gaps).</p>
+
+  <h2>Enforced endpoint → flag map <span class="tier-tag">(what the code checks today)</span></h2>
+
+  <h3><code>inventory_lite</code> <span class="tier-tag">(Basic)</span></h3>
+  <table><thead><tr><th>Method</th><th>Path</th></tr></thead><tbody>
+    <tr><td class="method">GET</td><td><code>/pharmacy/{ph_id}/inventory</code></td></tr>
+    <tr><td class="method">GET</td><td><code>/pharmacy/{ph_id}/inventory/{code}</code></td></tr>
+    <tr><td class="method">PATCH</td><td><code>/pharmacy/{ph_id}/inventory/{code}</code></td></tr>
+    <tr><td class="method">POST</td><td><code>/documents/process</code> <span class="tier-tag">(barcode)</span></td></tr>
+  </tbody></table>
+
+  <h3><code>compliance_reports</code> <span class="tier-tag">(Basic)</span></h3>
+  <table><thead><tr><th>Method</th><th>Path</th></tr></thead><tbody>
+    <tr><td class="method">GET</td><td><code>/pharmacy/{ph_id}/audit-report</code></td></tr>
+  </tbody></table>
+
+  <h3><code>invoice_to_inventory_auto</code> <span class="tier-tag">(Advanced)</span></h3>
+  <table><thead><tr><th>Method</th><th>Path</th></tr></thead><tbody>
+    <tr><td class="method">POST</td><td><code>/documents/process</code> <span class="tier-tag">(invoice)</span></td></tr>
+    <tr><td class="method">POST</td><td><code>/invoices</code></td></tr>
+    <tr><td class="method">GET</td><td><code>/invoices/{invoice_id}</code></td></tr>
+  </tbody></table>
+
+  <h3><code>top_quantity_drug_report</code> <span class="tier-tag">(Advanced)</span></h3>
+  <table><thead><tr><th>Method</th><th>Path</th></tr></thead><tbody>
+    <tr><td class="method">POST</td><td><code>/documents/process</code> <span class="tier-tag">(dispense)</span></td></tr>
+    <tr><td class="method">POST</td><td><code>/dispenses/validate</code></td></tr>
+    <tr><td class="method">POST</td><td><code>/dispenses</code></td></tr>
+    <tr><td class="method">GET</td><td><code>/reports/{report_id}</code></td></tr>
+    <tr><td class="method">GET</td><td><code>/reports/{report_id}/medicines/{ndc}</code></td></tr>
+    <tr><td class="method">DELETE</td><td><code>/reports/{report_id}</code></td></tr>
+  </tbody></table>
+
+  <h3><code>refill_analysis_billings</code> <span class="tier-tag">(Advanced)</span></h3>
+  <table><thead><tr><th>Method</th><th>Path</th></tr></thead><tbody>
+    <tr><td class="method">GET</td><td><code>/pharmacy/{ph_id}/refills</code></td></tr>
+    <tr><td class="method">DELETE</td><td><code>/pharmacy/{ph_id}/refills/{patient_key}</code></td></tr>
+  </tbody></table>
+
+  <h2>What each plan can call <span class="tier-tag">(cumulative)</span></h2>
+  <table>
+    <thead><tr><th>Endpoint group</th><th class="center">Basic</th><th class="center">Advanced</th><th class="center">Ultimate</th></tr></thead>
+    <tbody>
+      <tr><td>Inventory (list/detail/adjust, barcode)</td><td class="center yes">✔</td><td class="center yes">✔</td><td class="center yes">✔</td></tr>
+      <tr><td>Audit / compliance report</td><td class="center yes">✔</td><td class="center yes">✔</td><td class="center yes">✔</td></tr>
+      <tr><td>Invoice automation (upload/save/detail)</td><td class="center no">✗</td><td class="center yes">✔</td><td class="center yes">✔</td></tr>
+      <tr><td>Dispensary reports (dispense/reports)</td><td class="center no">✗</td><td class="center yes">✔ ≤250</td><td class="center yes">✔ ∞</td></tr>
+      <tr><td>Refill analysis</td><td class="center no">✗</td><td class="center yes">✔</td><td class="center yes">✔</td></tr>
+    </tbody>
+  </table>
+  <p class="tier-tag">A call to a feature the plan doesn't include returns <strong>402 Payment Required</strong>.</p>
+
+  <h2>Not feature-gated <span class="tier-tag">(open to any authenticated user)</span></h2>
+  <ul>
+    <li><strong>Auth &amp; account:</strong> <code>/user/*</code></li>
+    <li><strong>Pharmacy CRUD:</strong> <code>/pharmacy/*</code> (multi-location is structural)</li>
+    <li><strong>Activity feed:</strong> <code>GET /pharmacy/{ph_id}/activity</code></li>
+    <li><strong>Document status:</strong> <code>GET /documents/{doc_key}</code>, <code>GET /documents/</code></li>
+    <li><strong>Subscription self-service:</strong> <code>GET /plans</code>, <code>GET /subscription/{store}</code>, <code>POST /subscription/subscribe</code>, <code>PUT /subscription/upgrade</code> <span class="tier-tag">(owner or admin)</span></li>
+    <li><strong>Admin:</strong> <code>/admin/subscriptions*</code>, <code>/admin/plans*</code> (ADMIN-only)</li>
+  </ul>
+
+  <h2>Known gaps &amp; open items</h2>
+  <div class="callout">
+    <p class="note"><span class="sev crit">Critical</span> &nbsp;<strong>Self-serve subscribe/upgrade grant plans for free.</strong> No payment step — an owner can <code>POST /subscription/subscribe</code> for <code>ULTIMATE</code> at $0. Treat as admin-only until billing lands.</p>
+    <p class="note"><span class="sev med">Medium</span> &nbsp;<strong>Ultimate-only validation checks aren't separately gated.</strong> <code>ndc_claim_mismatch_checks</code>, <code>days_supply_validation</code>, <code>discontinued_drug_detection</code> run inside the shared validation engine reached by the Advanced-gated <code>/dispenses</code> + <code>/dispenses/validate</code>, so Advanced stores get them too. Needs a plan-aware validator.</p>
+    <p class="note"><span class="sev med">Medium</span> &nbsp;<strong>No ADMIN bypass</strong> in <code>ensure_feature</code> — admins get 402 on unsubscribed stores (fails closed).</p>
+    <p class="note"><span class="sev low">Low</span> &nbsp;<strong>Existing pharmacies need backfill</strong> — hard-deny 402 until assigned a plan.</p>
+    <p class="note"><span class="sev low">Low</span> &nbsp;<strong>No payment gateway</strong> — subscribe/upgrade/revoke are state-only, monthly only.</p>
+  </div>
+
+  <h3>Closed in this pass</h3>
+  <div class="callout">
+    <p class="note"><span class="yes">✔</span> &nbsp;<strong>Cross-store list endpoints gated:</strong> <code>GET /invoices/</code> (→ <code>invoice_to_inventory_auto</code>) and <code>GET /reports/</code> (→ <code>top_quantity_drug_report</code>) now hide rows for non-entitled stores via <code>feature_gate.entitled_store_ids</code>. <code>GET /documents/*</code> stays status-only metadata.</p>
+    <p class="note"><span class="yes">✔</span> &nbsp;<strong><code>drug_reconciliation_limit</code> enforced</strong> at <code>POST /dispenses</code> — a report exceeding the plan cap (250 on Basic/Advanced) is rejected with 402.</p>
+  </div>
+
+  <h2>Admin &amp; lifecycle controls</h2>
+  <ul>
+    <li><strong>Assign / override:</strong> <code>POST /admin/subscriptions</code></li>
+    <li><strong>Modify:</strong> <code>PUT /admin/subscriptions/{id}</code> (plan / status / expiry)</li>
+    <li><strong>Revoke:</strong> <code>POST /admin/subscriptions/{id}/revoke</code></li>
+    <li><strong>Catalog:</strong> <code>POST/PUT /admin/plans</code> — re-scope any tier's <code>features</code> without a redeploy.</li>
+    <li><strong>Audit:</strong> every change appends a <code>SubscriptionEvent</code> (<code>SUBSCRIBE</code> / <code>UPGRADE</code> / <code>DOWNGRADE</code> / <code>REVOKE</code> / <code>ADMIN_MODIFY</code>).</li>
+  </ul>
+
+  <footer class="doc">
+    <span>QueueRx — Subscription Module (v2)</span>
+    <span>Internal engineering reference · as built</span>
+  </footer>
+
+</div>
+</body>
+</html>

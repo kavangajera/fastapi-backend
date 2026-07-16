@@ -507,3 +507,28 @@ alerts ("couldn't check, insufficient history") — never a silent pass.
 | `NDC_LOOKUP_FAILED` | A | INDETERMINATE | FDA/cache lookup threw |
 | `DRUG_NAME_MISMATCH` | B | WARNING | printed name doesn't overlap FDA brand/generic |
 | `UNIT_OF_USE_FRACTIONAL` | C | ERROR | inhaler/pen/kit/sensor dispensed as fractional qty |
+| `PLAN_LOCKED` | (any) | INDETERMINATE | the module was skipped because the store's plan doesn't include it (see §12) |
+
+---
+
+## 12. Subscription micro-gating (`services/validation/plan_gate.py`)
+
+The engine runs each module only if the store's **plan** grants the matching
+feature flag (`docs/plan_pricing.md`). `validate_tier1` / `validate_tier2` take a
+`granted: set[str] | None` (the store's `Plan.features`; `None` = run all, used
+by the Kafka preview and tests). A skipped module emits one `PLAN_LOCKED`
+INDETERMINATE alert (never a silent pass; doubles as an upsell).
+
+| Module | Flag | Min plan |
+|---|---|---|
+| FIELD | *always* (data integrity — protects inventory math) | any |
+| G (totals/per-patient), E/F (repeat/dup-claim), H (zero-refills) | `top_quantity_drug_report` / `refill_analysis_billings` | Advanced |
+| C (pack-size) | `pack_size_billed_reconciliation` | Advanced |
+| D (days-supply) | `days_supply_validation` | Ultimate |
+| A (discontinued) | `discontinued_drug_detection` | Ultimate |
+| B (NDC/claim mismatch) | `ndc_claim_mismatch_checks` | Ultimate |
+
+When no A/B/C flag is granted, the FDA lookup is skipped entirely (saves
+~1–2 s/NDC). Defaults pending LEAD sign-off (see the plan doc Q1–Q3): Module F
+stays Advanced; gated save-blocking ERRORs (e.g. `NDC_DISCONTINUED`) are skipped
+for plans without the flag (pure paywall).

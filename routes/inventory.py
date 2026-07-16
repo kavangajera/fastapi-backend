@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
-from core.enums import UserRole
+from core.enums import Feature, UserRole
 from middlewares.auth import auth_incoming_req
 from schemas.inventory import (
     InventoryAdjustRequest,
@@ -34,6 +34,7 @@ from services.inventory_service import (
     get_inventory_detail,
     search_inventory,
 )
+from services.feature_gate import ensure_feature
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(tags=["Inventory"])
@@ -73,6 +74,7 @@ async def list_inventory(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.INVENTORY_LITE)
     rows, total = await search_inventory(
         db, medical_store_id=ph_id, q=q, only_negative=only_negative, skip=skip, limit=limit
     )
@@ -106,6 +108,7 @@ async def update_inventory(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.INVENTORY_LITE)
     if user.role not in (UserRole.PHARMACY_OWNER, UserRole.ADMIN):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -170,6 +173,7 @@ async def inventory_detail(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.INVENTORY_LITE)
     detail = await get_inventory_detail(db, medical_store_id=ph_id, code=code)
     if detail is None:
         raise HTTPException(

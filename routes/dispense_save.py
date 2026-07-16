@@ -21,8 +21,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
+from core.enums import Feature
 from middlewares.auth import auth_incoming_req
 from models import Dispense, DrugReport, Medicine
+from services.feature_gate import ensure_feature, within_limit
 from services.record_id_service import stamp_on_create
 from schemas.response_schema import Response_Schema, success_response
 from schemas.save_dispense import DispenseSaveRequest, DispenseSaveResponse
@@ -67,11 +69,29 @@ async def save_dispense_report(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, body.medical_store_id)
+    sub = await ensure_feature(db, body.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
 
-    # ── Validation gate ─────────────────────────────────────────────
+    # ── Plan quota gate: drugs reconciled per report ────────────────
+    n_drugs = len(body.medicines)
+    if not within_limit(sub, "drug_reconciliation_limit", n_drugs):
+        cap = (sub.plan.limits or {}).get("drug_reconciliation_limit")
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "status_code": 402,
+                "message": (
+                    f"Your plan allows up to {cap} drugs reconciled per report; "
+                    f"this report has {n_drugs}. Upgrade to Ultimate for unlimited."
+                ),
+                "data": None,
+            },
+        )
+
+    # ── Validation gate (micro-gated by the store's plan) ───────────
     report_data = body.model_dump(mode="json")
-    tier1 = validate_tier1(report_data)
-    validation = await validate_tier2(db, report_data, tier1_report=tier1)
+    granted = set(sub.plan.features or []) if sub.plan is not None else None
+    tier1 = validate_tier1(report_data, granted=granted)
+    validation = await validate_tier2(db, report_data, tier1_report=tier1, granted=granted)
 
     # Block only when there are errors AND the owner has not opted to force-save.
     if validation.summary.blocking and not body.force_save:

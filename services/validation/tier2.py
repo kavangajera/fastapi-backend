@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.config import settings
 from schemas.validation import Alert, ValidationReport
 from services.validation.ndc_cache import get_or_fetch
+from services.validation.plan_gate import has, plan_locked_alert
 from services.validation.severity import summarize
 
 
@@ -196,45 +197,68 @@ async def validate_tier2(
     session: AsyncSession,
     report_data: dict,
     tier1_report: ValidationReport | None = None,
+    granted: set[str] | None = None,
 ) -> ValidationReport:
     """
     Tier-1 + FDA-dependent checks merged into one ValidationReport.
 
     Caller should pass `tier1_report` from a prior `validate_tier1` run so
     we don't recompute the pure-data checks. If None, Tier-1 is rerun.
+
+    `granted` = the store's ``Plan.features`` flag set (``None`` → run all).
+    Modules A/B/C are gated per plan; when none are granted the FDA lookup is
+    skipped entirely (saving ~1–2 s/NDC). Skipped modules emit ``PLAN_LOCKED``.
     """
     if tier1_report is None:
         from services.validation.tier1 import validate_tier1
 
-        tier1_report = validate_tier1(report_data)
+        tier1_report = validate_tier1(report_data, granted=granted)
 
     alerts: list[Alert] = list(tier1_report.alerts)
     medicines: list[dict] = report_data.get("medicines") or []
     today = datetime.utcnow().date()
 
-    for mi, med in enumerate(medicines):
-        ndc = (med.get("ndc") or "").strip()
-        if not re.fullmatch(r"\d{11}", ndc):
-            continue  # FIELD already flagged MALFORMED_NDC
-        try:
-            cache_row = await get_or_fetch(session, ndc)
-        except Exception as exc:
-            logger.warning("NDC lookup failed: ndc11={n} err={e}", n=ndc, e=exc)
-            alerts.append(
-                Alert(
-                    module="A",
-                    code="NDC_LOOKUP_FAILED",
-                    severity="INDETERMINATE",
-                    message=f"FDA / cache lookup failed: {exc}",
-                    medicine_index=mi,
-                    ndc=ndc,
-                )
-            )
-            continue
-        drug_name = med.get("drug_name") or ""
-        _module_a(mi, ndc, drug_name, cache_row, today, alerts)
-        _module_b(mi, ndc, drug_name, cache_row, alerts)
-        _module_c(mi, ndc, med, cache_row, alerts)
+    need_a = has(granted, "discontinued_drug_detection")   # Module A (Ultimate)
+    need_b = has(granted, "ndc_claim_mismatch_checks")     # Module B (Ultimate)
+    need_c = has(granted, "pack_size_billed_reconciliation")  # Module C (Advanced)
+
+    # Only pay for FDA lookups if at least one FDA-dependent module is granted.
+    if need_a or need_b or need_c:
+        for mi, med in enumerate(medicines):
+            ndc = (med.get("ndc") or "").strip()
+            if not re.fullmatch(r"\d{11}", ndc):
+                continue  # FIELD already flagged MALFORMED_NDC
+            try:
+                cache_row = await get_or_fetch(session, ndc)
+            except Exception as exc:
+                logger.warning("NDC lookup failed: ndc11={n} err={e}", n=ndc, e=exc)
+                if need_a:
+                    alerts.append(
+                        Alert(
+                            module="A",
+                            code="NDC_LOOKUP_FAILED",
+                            severity="INDETERMINATE",
+                            message=f"FDA / cache lookup failed: {exc}",
+                            medicine_index=mi,
+                            ndc=ndc,
+                        )
+                    )
+                continue
+            drug_name = med.get("drug_name") or ""
+            if need_a:
+                _module_a(mi, ndc, drug_name, cache_row, today, alerts)
+            if need_b:
+                _module_b(mi, ndc, drug_name, cache_row, alerts)
+            if need_c:
+                _module_c(mi, ndc, med, cache_row, alerts)
+
+    # One lock marker per module the plan doesn't include.
+    if not need_a:
+        alerts.append(plan_locked_alert("A", "discontinued_drug_detection"))
+    if not need_b:
+        alerts.append(plan_locked_alert("B", "ndc_claim_mismatch_checks"))
+    if not need_c:
+        alerts.append(plan_locked_alert("C", "pack_size_billed_reconciliation"))
 
     return ValidationReport(
         summary=summarize(alerts, tier1=True, tier2=True),

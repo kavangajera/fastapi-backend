@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
 from core.config import settings
-from core.enums import ALLOWED_EXTENSIONS, DocumentStatus, ProcessType
+from core.enums import ALLOWED_EXTENSIONS, DocumentStatus, Feature, ProcessType
 from kafka_infra.messages import ProcessingJob
 from kafka_infra.producer import kafka_producer
 from kafka_infra.result_bus import result_bus
@@ -43,12 +43,20 @@ from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
 from services.document_storage import document_storage
+from services.feature_gate import ensure_feature
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/documents", tags=["Document Processing"])
 
 
 _SINGLE_FILE_TYPES = {ProcessType.INVOICE, ProcessType.DISPENSE}
+
+# Which subscription feature each processing type requires.
+_PROCESS_FEATURE: dict[ProcessType, Feature] = {
+    ProcessType.INVOICE: Feature.INVOICE_TO_INVENTORY_AUTO,
+    ProcessType.DISPENSE: Feature.TOP_QUANTITY_DRUG_REPORT,
+    ProcessType.BARCODE: Feature.INVENTORY_LITE,
+}
 
 
 def _get_extension(filename: str) -> str:
@@ -139,6 +147,7 @@ async def process_document(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, medical_store_id)
+    await ensure_feature(db, medical_store_id, _PROCESS_FEATURE[process_type])
     _validate_count(process_type, files)
 
     # Validate + read every file BEFORE we create any Document row, so a

@@ -7,6 +7,64 @@ class UserRole(str, Enum):  # Just for example
     ADMIN = "ADMIN"
 
 
+class PlanCode(str, Enum):
+    """Subscription plan tiers (QueueRx Pricing Reference v2).
+
+    Additive: every feature in a lower tier is included in the tiers above it.
+    """
+
+    BASIC = "BASIC"          # $29/mo  — compliance + inventory fundamentals
+    ADVANCED = "ADVANCED"    # $179/mo — Basic + invoice automation + billing analytics
+    ULTIMATE = "ULTIMATE"    # $349/mo — full platform, unlimited dispensary intelligence
+
+
+class SubscriptionStatus(str, Enum):
+    ACTIVE = "ACTIVE"
+    EXPIRED = "EXPIRED"
+    CANCELLED = "CANCELLED"    # admin-revoked / owner-cancelled
+
+
+class Feature(str, Enum):
+    """Canonical entitlement flag keys (QueueRx v2 developer contract).
+
+    Values are the stable snake_case keys the frontend and API guards check
+    against. Which plan grants which flag is stored per-plan in
+    ``Plan.features`` (a DB JSON column), so entitlements are admin-editable at
+    runtime. The min-plan noted per flag is the lowest tier that grants it; it
+    stays granted for every tier above.
+
+    NOTE: the drug-reconciliation cap is NOT a boolean flag — it lives in
+    ``Plan.limits`` as ``drug_reconciliation_limit`` / ``drugs_reconciled``
+    (250 for Basic & Advanced, unlimited for Ultimate).
+    """
+
+    # ── Basic (min plan: BASIC) ─────────────────────────────────────────
+    TEMP_MONITORING_ALERTS = "temp_monitoring_alerts"
+    COMPLIANCE_REPORTS = "compliance_reports"
+    INVENTORY_LITE = "inventory_lite"
+    INVOICE_UPLOAD_MANUAL = "invoice_upload_manual"
+    EXPIRATION_LOT_TRACKING = "expiration_lot_tracking"
+    OVERSTOCK_MONITORING = "overstock_monitoring"
+    MULTI_LOCATION_ACCESS = "multi_location_access"
+
+    # ── Advanced (min plan: ADVANCED) ───────────────────────────────────
+    INVOICE_TO_INVENTORY_AUTO = "invoice_to_inventory_auto"
+    INVENTORY_RECONCILIATION_AUTO = "inventory_reconciliation_auto"
+    TOP_QUANTITY_DRUG_REPORT = "top_quantity_drug_report"
+    INSURANCE_NDC_ANALYTICS = "insurance_ndc_analytics"
+    PACK_SIZE_BILLED_RECONCILIATION = "pack_size_billed_reconciliation"
+    CUSTOM_PATIENT_MED_REPORTS = "custom_patient_med_reports"
+    REFILL_ANALYSIS_BILLINGS = "refill_analysis_billings"
+
+    # ── Ultimate (min plan: ULTIMATE) ───────────────────────────────────
+    NDC_CLAIM_MISMATCH_CHECKS = "ndc_claim_mismatch_checks"
+    DAYS_SUPPLY_VALIDATION = "days_supply_validation"
+    DISCONTINUED_DRUG_DETECTION = "discontinued_drug_detection"
+    INVOICE_BILLED_CROSS_RECONCILIATION = "invoice_billed_cross_reconciliation"
+    ANNUAL_CHECKUP_AUDIT = "annual_checkup_audit"
+    EARLY_ACCESS_FEATURES = "early_access_features"
+
+
 class DocumentStatus(str, Enum):
     UPLOADED = "UPLOADED"
     QUEUED = "QUEUED"
