@@ -19,6 +19,7 @@ from schemas.response_models import (
     UsersByRoleResponse,
     UserUpdateResponse,
 )
+from schemas.response_schema import Response_Schema
 
 from .pharmacy import (
     create_pharmacy,
@@ -46,7 +47,6 @@ from .user import (
     update_me,
     update_user,
 )
-from schemas.response_schema import Response_Schema
 
 router = APIRouter()
 

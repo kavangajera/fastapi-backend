@@ -3,16 +3,8 @@ services/subscription_service.py
 ────────────────────────────────
 Business logic for a pharmacy's subscription lifecycle.
 
-State-only (no payment gateway yet): subscribe / upgrade / revoke simply
-mutate DB state + expiry and append a ``SubscriptionEvent`` audit row. Billing
-integration (Stripe/webhooks, proration) is a later iteration.
-
-Invariant: at most one *live* (non soft-deleted) subscription per store. We
-keep a single row per store and mutate it in place; changing plans just swaps
-``plan_id`` and (state-only) resets ``current_period_end`` to a fresh period.
-
-Billing is **monthly only** (the v2 pricing sheet lists monthly prices); each
-period is a fixed 30 days.
+Billing integration (Stripe/webhooks, proration) enabled.
+Subscribe and upgrade now delegate to Stripe checkout sessions.
 """
 
 from __future__ import annotations
@@ -26,12 +18,17 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.enums import SubscriptionStatus
+from models.pharmacy import Pharmacy
 from models.plan import Plan
 from models.subscription import Subscription, SubscriptionEvent
+from models.user import User
 from services.plan_service import get_plan, get_plan_by_code
+from services.stripe_service import (
+    cancel_stripe_subscription,
+    create_checkout_session,
+    modify_subscription,
+)
 
-# Monthly-only, state-only billing period. Real calendar-month/prorated billing
-# arrives with the payment-gateway iteration.
 SUBSCRIPTION_PERIOD_DAYS = 30
 
 
@@ -74,8 +71,9 @@ async def _get_live_subscription(db: AsyncSession, medical_store_id: int) -> Sub
         select(Subscription)
         .where(Subscription.medical_store_id == medical_store_id)
         .order_by(Subscription.subscription_id.desc())
+        .limit(1)
     )
-    return result.scalars().first()
+    return result.scalar_one_or_none()
 
 
 async def get_for_store(db: AsyncSession, medical_store_id: int) -> Subscription | None:
@@ -114,46 +112,35 @@ async def subscribe(
     *,
     medical_store_id: int,
     plan_code: str,
-    actor_user_id: int | None,
-) -> Subscription:
-    """Start or (re)activate the store's subscription on ``plan_code``.
-
-    If the store already has a row we mutate it in place (covers resubscribe
-    after expiry/cancellation); otherwise we create one.
-    """
+    actor_user_id: int,
+) -> str:
+    """Start or (re)activate the store's subscription on ``plan_code`` via Stripe."""
     plan = await _resolve_plan_by_code(db, plan_code)
-    now = datetime.utcnow()
     sub = await _get_live_subscription(db, medical_store_id)
-    is_new = sub is None
-
-    if is_new:
-        sub = Subscription(medical_store_id=medical_store_id)
-        db.add(sub)
-
-    from_plan_id = None if is_new else sub.plan_id
-    sub.plan_id = plan.plan_id
-    sub.status = SubscriptionStatus.ACTIVE.value
-    sub.started_at = now
-    sub.current_period_end = _period_end(now)
-    sub.cancelled_at = None
-
+    
+    if sub and sub.status == SubscriptionStatus.ACTIVE.value:
+        _raise(409, "Pharmacy already has an active subscription. Use upgrade endpoint.")
+        
+    pharmacy = await db.get(Pharmacy, medical_store_id)
+    if not pharmacy:
+        _raise(404, "Pharmacy not found")
+        
+    user = await db.get(User, actor_user_id)
+    if not user:
+        _raise(404, "User not found")
+        
     try:
-        await db.flush()  # assign subscription_id before logging the event
-        _log_event(
+        session = await create_checkout_session(
             db,
-            sub,
-            "SUBSCRIBE",
-            from_plan_id=from_plan_id,
-            to_plan_id=plan.plan_id,
-            actor_user_id=actor_user_id,
+            pharmacy,
+            plan,
+            user.email or "owner@example.com",
+            medical_store_id
         )
-        await db.commit()
-        await db.refresh(sub)
-    except SQLAlchemyError as exc:
-        await db.rollback()
-        logger.error("Failed to subscribe store {s}: {err}", s=medical_store_id, err=str(exc))
-        _raise(500, "Failed to create subscription")
-    return sub
+        return session.url
+    except Exception as exc:
+        logger.error("Failed to create Stripe checkout session: {err}", err=str(exc))
+        _raise(500, f"Payment gateway error: {str(exc)}")
 
 
 async def upgrade(
@@ -163,44 +150,58 @@ async def upgrade(
     plan_code: str,
     actor_user_id: int | None,
 ) -> Subscription:
-    """Change the store's plan immediately (state-only: fresh period, no proration)."""
+    """Change the store's plan via Stripe (with proration)."""
     sub = await _get_live_subscription(db, medical_store_id)
-    if sub is None:
-        _raise(404, "No subscription to change for this pharmacy. Subscribe first.")
+    if sub is None or sub.status != SubscriptionStatus.ACTIVE.value:
+        _raise(404, "No active subscription to change for this pharmacy. Subscribe first.")
 
     new_plan = await _resolve_plan_by_code(db, plan_code)
     old_plan = await get_plan(db, sub.plan_id)
     if old_plan is not None and old_plan.plan_id == new_plan.plan_id:
         _raise(409, "Pharmacy is already on this plan")
-
-    now = datetime.utcnow()
-    from_plan_id = sub.plan_id
-
-    sub.plan_id = new_plan.plan_id
-    sub.status = SubscriptionStatus.ACTIVE.value
-    sub.started_at = now
-    sub.current_period_end = _period_end(now)
-    sub.cancelled_at = None
-
-    action = "UPGRADE"
-    if old_plan is not None and new_plan.tier < old_plan.tier:
-        action = "DOWNGRADE"
+        
+    if not sub.stripe_subscription_id:
+        _raise(400, "Cannot upgrade legacy subscriptions via Stripe. Please cancel and re-subscribe.")
 
     try:
-        _log_event(
-            db,
-            sub,
-            action,
-            from_plan_id=from_plan_id,
-            to_plan_id=new_plan.plan_id,
-            actor_user_id=actor_user_id,
-        )
+        await modify_subscription(db, sub, new_plan)
         await db.commit()
-        await db.refresh(sub)
-    except SQLAlchemyError as exc:
-        await db.rollback()
-        logger.error("Failed to change plan for store {s}: {err}", s=medical_store_id, err=str(exc))
-        _raise(500, "Failed to change plan")
+        # Webhook will handle DB updates for the new plan
+    except Exception as exc:
+        logger.error("Failed to modify Stripe subscription: {err}", err=str(exc))
+        _raise(500, f"Payment gateway error: {str(exc)}")
+        
+    return sub
+
+
+async def cancel(
+    db: AsyncSession,
+    *,
+    medical_store_id: int,
+    actor_user_id: int | None,
+    immediately: bool = False
+) -> Subscription:
+    """Cancel subscription via Stripe."""
+    sub = await _get_live_subscription(db, medical_store_id)
+    if sub is None or sub.status != SubscriptionStatus.ACTIVE.value:
+        _raise(404, "No active subscription to cancel")
+        
+    if not sub.stripe_subscription_id:
+        # Legacy
+        sub.status = SubscriptionStatus.CANCELLED.value
+        sub.cancelled_at = datetime.utcnow()
+        if immediately:
+            sub.current_period_end = sub.cancelled_at
+        await db.commit()
+        return sub
+
+    try:
+        cancel_stripe_subscription(sub.stripe_subscription_id, immediately)
+        # Webhook will handle DB updates for cancelled status
+    except Exception as exc:
+        logger.error("Failed to cancel Stripe subscription: {err}", err=str(exc))
+        _raise(500, f"Payment gateway error: {str(exc)}")
+        
     return sub
 
 
@@ -322,6 +323,9 @@ async def revoke(
     sub.current_period_end = now  # cut access off immediately (no grace)
 
     try:
+        if sub.stripe_subscription_id:
+            cancel_stripe_subscription(sub.stripe_subscription_id, immediately=True)
+            
         _log_event(
             db,
             sub,
@@ -336,4 +340,7 @@ async def revoke(
         await db.rollback()
         logger.error("Revoke failed for sub {i}: {err}", i=subscription_id, err=str(exc))
         _raise(500, "Failed to revoke subscription")
+    except Exception as exc:
+        logger.error("Stripe revoke failed for sub {i}: {err}", i=subscription_id, err=str(exc))
+        _raise(500, f"Stripe error: {str(exc)}")
     return sub

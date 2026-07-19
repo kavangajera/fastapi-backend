@@ -18,7 +18,7 @@ job is required.
 
 from datetime import datetime
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String
+from sqlalchemy import JSON, Column, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.async_db import AuditMixin, Base
@@ -50,6 +50,9 @@ class Subscription(AuditMixin, Base):
     current_period_end: Mapped[datetime] = mapped_column(DateTime, nullable=False)
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     notes: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    
+    stripe_subscription_id = Column(String(255), nullable=True, unique=True, comment="Stripe Subscription ID")
+    stripe_checkout_session_id = Column(String(255), nullable=True, comment="Pending Stripe Checkout Session")
 
     plan = relationship("Plan", lazy="selectin")
 

@@ -59,6 +59,10 @@ class Settings(BaseSettings):
     # Module A — flag listings expiring within N days as INFO (not ERROR).
     NDC_LISTING_EXPIRY_INFO_DAYS: int = 365
 
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+
     model_config = ConfigDict(extra="forbid", env_file=".env")
 
 

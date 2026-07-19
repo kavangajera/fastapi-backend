@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Queue RX Stripe Test Frontend</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; background: #f9fafb; }
+        .card { background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 2rem; }
+        h1 { color: #111827; }
+        h2 { color: #374151; font-size: 1.25rem; }
+        button { background: #4f46e5; color: white; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; font-weight: 500; }
+        button:hover { background: #4338ca; }
+        input { padding: 0.5rem; border: 1px solid #d1d5db; border-radius: 4px; width: 100%; box-sizing: border-box; margin-bottom: 1rem; }
+        .result { margin-top: 1rem; padding: 1rem; background: #f3f4f6; border-radius: 4px; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+        .success-banner { background: #dcfce7; color: #166534; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+        .error-banner { background: #fee2e2; color: #991b1b; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+        .cancel-banner { background: #fef9c3; color: #854d0e; padding: 1rem; border-radius: 4px; margin-bottom: 1rem; display: none; }
+    </style>
+</head>
+<body>
+    <h1>Queue RX Subscriptions</h1>
+    
+    <div id="success-banner" class="success-banner">Subscription successful! Thank you for subscribing.</div>
+    <div id="cancel-banner" class="cancel-banner">Subscription checkout was cancelled.</div>
+    <div id="error-banner" class="error-banner"></div>
+
+    <div class="card">
+        <h2>1. Configure Auth</h2>
+        <p>Set your JWT token here to authenticate requests.</p>
+        <input type="text" id="token" placeholder="Bearer eyJhbGciOiJIUzI1...">
+    </div>
+
+    <div class="card">
+        <h2>2. Subscribe to Plan</h2>
+        <input type="number" id="ms-id" placeholder="Medical Store ID (e.g. 1)">
+        <select id="plan-code" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem;">
+            <option value="BASIC">BASIC ($29/mo)</option>
+            <option value="ADVANCED">ADVANCED ($179/mo)</option>
+            <option value="ULTIMATE">ULTIMATE ($349/mo)</option>
+        </select>
+        <button onclick="subscribe()">Subscribe via Stripe</button>
+        <div id="sub-result" class="result" style="display: none;"></div>
+    </div>
+    
+    <div class="card">
+        <h2>3. Upgrade / Downgrade</h2>
+        <input type="number" id="up-ms-id" placeholder="Medical Store ID (e.g. 1)">
+        <select id="up-plan-code" style="width: 100%; padding: 0.5rem; margin-bottom: 1rem;">
+            <option value="BASIC">BASIC ($29/mo)</option>
+            <option value="ADVANCED">ADVANCED ($179/mo)</option>
+            <option value="ULTIMATE">ULTIMATE ($349/mo)</option>
+        </select>
+        <button onclick="upgrade()">Change Plan</button>
+        <div id="up-result" class="result" style="display: none;"></div>
+    </div>
+
+    <div class="card">
+        <h2>4. View Subscription Status</h2>
+        <input type="number" id="get-ms-id" placeholder="Medical Store ID (e.g. 1)">
+        <button onclick="getStatus()">Get Status</button>
+        <div id="get-result" class="result" style="display: none;"></div>
+    </div>
+    
+    <div class="card">
+        <h2>5. Cancel Subscription</h2>
+        <input type="number" id="cancel-ms-id" placeholder="Medical Store ID (e.g. 1)">
+        <div>
+            <input type="checkbox" id="cancel-immediately" style="width: auto; margin-right: 0.5rem;">
+            <label for="cancel-immediately">Cancel immediately (no grace period)</label>
+        </div>
+        <button onclick="cancelSub()">Cancel Subscription</button>
+        <div id="cancel-result" class="result" style="display: none;"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:5001';
+        
+        // Handle URL parameters for success/cancel redirects
+        window.onload = () => {
+            const path = window.location.pathname;
+            const params = new URLSearchParams(window.location.search);
+            if (path.includes('/subscription/success')) {
+                document.getElementById('success-banner').style.display = 'block';
+                if (params.get('medical_store_id')) {
+                    document.getElementById('get-ms-id').value = params.get('medical_store_id');
+                }
+            } else if (path.includes('/subscription/cancel')) {
+                document.getElementById('cancel-banner').style.display = 'block';
+            }
+        };
+
+        function getToken() {
+            let token = document.getElementById('token').value.trim();
+            if (token && !token.startsWith('Bearer ')) {
+                token = 'Bearer ' + token;
+            }
+            return token;
+        }
+
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const token = getToken();
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) headers['Authorization'] = token;
+            
+            try {
+                const res = await fetch(`${API_URL}${endpoint}`, {
+                    method,
+                    headers,
+                    body: body ? JSON.stringify(body) : null
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.message || 'API Error');
+                return data;
+            } catch (err) {
+                document.getElementById('error-banner').innerText = err.message;
+                document.getElementById('error-banner').style.display = 'block';
+                setTimeout(() => document.getElementById('error-banner').style.display = 'none', 5000);
+                throw err;
+            }
+        }
+
+        async function subscribe() {
+            const msId = document.getElementById('ms-id').value;
+            const planCode = document.getElementById('plan-code').value;
+            const resultDiv = document.getElementById('sub-result');
+            
+            try {
+                resultDiv.innerText = 'Creating checkout session...';
+                resultDiv.style.display = 'block';
+                
+                const res = await apiCall('/subscription/subscribe', 'POST', {
+                    medical_store_id: parseInt(msId),
+                    plan_code: planCode
+                });
+                
+                resultDiv.innerText = JSON.stringify(res, null, 2);
+                
+                if (res.data && res.data.checkout_url) {
+                    resultDiv.innerText += '\n\nRedirecting to Stripe in 2 seconds...';
+                    setTimeout(() => {
+                        window.location.href = res.data.checkout_url;
+                    }, 2000);
+                }
+            } catch (err) {
+                resultDiv.innerText = 'Error: ' + err.message;
+            }
+        }
+        
+        async function upgrade() {
+            const msId = document.getElementById('up-ms-id').value;
+            const planCode = document.getElementById('up-plan-code').value;
+            const resultDiv = document.getElementById('up-result');
+            
+            try {
+                resultDiv.innerText = 'Changing plan...';
+                resultDiv.style.display = 'block';
+                
+                const res = await apiCall('/subscription/upgrade', 'PUT', {
+                    medical_store_id: parseInt(msId),
+                    plan_code: planCode
+                });
+                
+                resultDiv.innerText = JSON.stringify(res, null, 2);
+            } catch (err) {
+                resultDiv.innerText = 'Error: ' + err.message;
+            }
+        }
+
+        async function getStatus() {
+            const msId = document.getElementById('get-ms-id').value;
+            const resultDiv = document.getElementById('get-result');
+            
+            try {
+                resultDiv.innerText = 'Loading...';
+                resultDiv.style.display = 'block';
+                
+                const res = await apiCall(`/subscription/${msId}`);
+                
+                // Fetch payments too
+                const payments = await apiCall(`/subscription/${msId}/payments`);
+                
+                resultDiv.innerText = "Subscription:\n" + JSON.stringify(res, null, 2) + 
+                                     "\n\nPayments:\n" + JSON.stringify(payments, null, 2);
+            } catch (err) {
+                resultDiv.innerText = 'Error: ' + err.message;
+            }
+        }
+        
+        async function cancelSub() {
+            const msId = document.getElementById('cancel-ms-id').value;
+            const immediately = document.getElementById('cancel-immediately').checked;
+            const resultDiv = document.getElementById('cancel-result');
+            
+            if (!confirm('Are you sure you want to cancel the subscription?')) return;
+            
+            try {
+                resultDiv.innerText = 'Cancelling...';
+                resultDiv.style.display = 'block';
+                
+                const res = await apiCall('/subscription/cancel', 'POST', {
+                    medical_store_id: parseInt(msId),
+                    cancel_immediately: immediately
+                });
+                
+                resultDiv.innerText = JSON.stringify(res, null, 2);
+            } catch (err) {
+                resultDiv.innerText = 'Error: ' + err.message;
+            }
+        }
+    </script>
+</body>
+</html>

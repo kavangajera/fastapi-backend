@@ -95,11 +95,11 @@ class BarcodeScannerService:
         else:
             try:
                 pil_image = Image.open(BytesIO(image_bytes)).convert("RGB")
-            except UnidentifiedImageError as exc:
+            except UnidentifiedImageError:
                 # Some clients send raw bytes that aren't base64; retry as-is.
                 try:
                     pil_image = Image.open(BytesIO(image_base64.encode("utf-8"))).convert("RGB")
-                except Exception:
+                except Exception as exc:
                     raise exc
 
         return pil_image

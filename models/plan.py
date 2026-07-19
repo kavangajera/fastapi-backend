@@ -16,7 +16,7 @@ code) so an admin can adjust what a tier includes at runtime via
 dict means "unlimited" (Ultimate).
 """
 
-from sqlalchemy import JSON, Boolean, Integer, String, text
+from sqlalchemy import JSON, Boolean, Column, Integer, String, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.async_db import AuditMixin, Base
@@ -47,6 +47,9 @@ class Plan(AuditMixin, Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=text("1"), nullable=False
     )
+    
+    stripe_product_id = Column(String(255), nullable=True, comment="Stripe Product ID")
+    stripe_price_id = Column(String(255), nullable=True, comment="Stripe Price ID (monthly recurring)")
 
     def __repr__(self) -> str:
         return f"<Plan(code={self.code!r}, tier={self.tier})>"
