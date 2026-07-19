@@ -30,6 +30,7 @@ dependencies = [
   "pylibdmtx>=0.1.10",
   "pymupdf>=1.27.2.2",
   "pymysql>=1.1.2",
+  "python-dateutil>=2.9.0.post0",
   "python-jose>=3.5.0",
   "python-multipart>=0.0.22",
   "pyzbar>=0.1.9",

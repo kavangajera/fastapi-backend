@@ -102,8 +102,8 @@ def _normalize_fda(payload: dict | None, ndc11: str, matched: str | None) -> dic
             else payload.get("route")
         ),
         "marketing_category": payload.get("marketing_category"),
-        "marketing_start_date": payload.get("marketing_start_date"),
-        "marketing_end_date": payload.get("marketing_end_date"),
+        "marketing_start_date": packaging.get("marketing_start_date") or payload.get("marketing_start_date"),
+        "marketing_end_date": packaging.get("marketing_end_date") or payload.get("marketing_end_date"),
         "listing_expiration_date": payload.get("listing_expiration_date"),
         "package_description": pkg_desc,
         "is_unit_of_use": _is_unit_of_use(df, pkg_desc),
