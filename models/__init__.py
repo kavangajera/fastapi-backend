@@ -10,6 +10,7 @@ from .plan import Plan
 from .refill_dismissal import RefillDismissal
 from .refresh_token import RefreshToken
 from .subscription import Subscription, SubscriptionEvent
+from .temperature_log import TemperatureLog
 from .user import User
 
 __all__ = [
@@ -32,4 +33,5 @@ __all__ = [
     "Plan",
     "Subscription",
     "SubscriptionEvent",
+    "TemperatureLog",
 ]

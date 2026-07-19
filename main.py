@@ -26,6 +26,7 @@ from routes.pharmacy_purchase_report import router as report_router
 from routes.reconciliation import router as reconciliation_router
 from routes.refills import router as refills_router
 from routes.subscription import router as subscription_router
+from routes.temperature_logs import router as temperature_logs_router
 from schemas.response_schema import success_response
 
 setup_logging()
@@ -115,6 +116,10 @@ Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-acces
             "name": "Inventory",
             "description": "Per-medical-store running stock, keyed by (medical_store_id, ndc11 or upc).",
         },
+        {
+            "name": "Temperature Logs",
+            "description": "Basic connectivity surface for external temperature devices to store and read back temperature logs.",
+        },
     ],
     lifespan=lifespan,
 )
@@ -184,6 +189,7 @@ app.include_router(monitor_router)
 app.include_router(subscription_router)
 app.include_router(admin_subscription_router)
 app.include_router(reconciliation_router)
+app.include_router(temperature_logs_router)
 
 
 @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)
