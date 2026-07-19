@@ -20,8 +20,6 @@ from core.async_db import get_async_db
 from core.enums import Feature
 from middlewares.auth import auth_incoming_req
 from models import Invoice, InvoiceLineItem, InvoiceSummary
-from services.feature_gate import ensure_feature
-from services.record_id_service import stamp_on_create
 from schemas.response_schema import Response_Schema, success_response
 from schemas.save_invoice import (
     InventoryUpdate,
@@ -31,9 +29,11 @@ from schemas.save_invoice import (
 )
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import build_search_blob, log_activity
+from services.feature_gate import ensure_feature
 from services.inventory_service import add_invoice_quantities
 from services.invoice_service import _classify_ndc
 from services.pharmacy_authz import ensure_pharmacy_access
+from services.record_id_service import stamp_on_create
 
 router = APIRouter(tags=["Invoices"])
 

@@ -237,6 +237,58 @@ async def subtract_dispense_quantities(
     return updates
 
 
+async def reverse_dispense_quantities(
+    session: AsyncSession,
+    *,
+    medical_store_id: int,
+    drug_report_id: int,
+) -> list[dict]:
+    """
+    For every medicine on `drug_report_id`, +sum(qty_disp) to inventory.
+    Used when replacing or deleting an existing dispense report.
+    """
+    med_rows = await session.execute(select(Medicine).where(Medicine.report_id == drug_report_id))
+    medicines = list(med_rows.scalars().all())
+
+    updates: list[dict] = []
+    for med in medicines:
+        code = _normalize_ndc(med.ndc)
+        if not code:
+            continue
+
+        disp_rows = await session.execute(
+            select(Dispense.qty_disp).where(Dispense.medicine_id == med.id)
+        )
+        total = Decimal("0")
+        any_qty = False
+        for (qty,) in disp_rows.all():
+            if qty is None:
+                continue
+            total += Decimal(qty)
+            any_qty = True
+        if not any_qty or total == 0:
+            continue
+
+        new_qty = await _upsert_delta(
+            session,
+            medical_store_id=medical_store_id,
+            code=code,
+            delta=total,  # Positive delta to reverse the previous subtraction
+            product_name=med.drug_name,
+            last_invoice_id=None,
+        )
+        updates.append({"code": code, "delta": str(total), "new_quantity": str(new_qty)})
+
+    await session.flush()
+    logger.info(
+        "Inventory +dispense (reverse): ms_id={ph} drug_report_id={r} touched={n}",
+        ph=medical_store_id,
+        r=drug_report_id,
+        n=len(updates),
+    )
+    return updates
+
+
 async def get_inventory(session: AsyncSession, *, medical_store_id: int) -> list[MedicineInventory]:
     rows = await session.execute(
         select(MedicineInventory)

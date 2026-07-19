@@ -485,7 +485,7 @@ def _parse_grand_total(lines: list[str]) -> dict[str, str | None]:
     if gt["total_price"] is None and money_lines:
         gt["total_price"] = _parse_money(money_lines[-1][1])
 
-    for l2, m2 in money_lines:
+    for _l2, m2 in money_lines:
         parsed = _parse_money(m2)
         if parsed != gt["total_price"]:
             gt["total_cost"] = parsed

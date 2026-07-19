@@ -20,9 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from core.async_db import get_async_db
 from core.enums import UserRole
 from middlewares.auth import auth_incoming_req
+from schemas.payment_schemas import CheckoutSessionResponse, PaymentListResponse, PaymentOut
 from schemas.plan_schemas import PlanOut
 from schemas.response_schema import Response_Schema, success_response
 from schemas.subscription_schemas import (
+    CancelRequest,
     SubscribeRequest,
     SubscriptionOut,
     UpgradeRequest,
@@ -89,7 +91,7 @@ async def get_subscription(
 @router.post(
     "/subscription/subscribe",
     response_model=Response_Schema,
-    summary="Subscribe a pharmacy to a plan",
+    summary="Subscribe a pharmacy to a plan (redirects to Stripe)",
 )
 async def subscribe(
     body: SubscribeRequest,
@@ -98,15 +100,15 @@ async def subscribe(
 ):
     await ensure_pharmacy_access(db, user, body.medical_store_id)
     _require_manage_role(user)
-    sub = await subscription_service.subscribe(
+    checkout_url = await subscription_service.subscribe(
         db,
         medical_store_id=body.medical_store_id,
         plan_code=body.plan_code.value,
         actor_user_id=user.user_id,
     )
     return success_response(
-        SubscriptionOut.model_validate(sub).model_dump(),
-        "Subscription activated successfully",
+        CheckoutSessionResponse(checkout_url=checkout_url, session_id="").model_dump(),
+        "Checkout session created",
         status_code=201,
     )
 
@@ -132,4 +134,69 @@ async def upgrade(
     return success_response(
         SubscriptionOut.model_validate(sub).model_dump(),
         "Plan changed successfully",
+    )
+
+
+@router.post(
+    "/subscription/cancel",
+    response_model=Response_Schema,
+    summary="Cancel a pharmacy's subscription",
+)
+async def cancel(
+    body: CancelRequest,
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    await ensure_pharmacy_access(db, user, body.medical_store_id)
+    _require_manage_role(user)
+    sub = await subscription_service.cancel(
+        db,
+        medical_store_id=body.medical_store_id,
+        actor_user_id=user.user_id,
+        immediately=body.cancel_immediately,
+    )
+    return success_response(
+        SubscriptionOut.model_validate(sub).model_dump(),
+        "Subscription cancelled successfully",
+    )
+
+
+@router.get(
+    "/subscription/{medical_store_id}/payments",
+    response_model=Response_Schema,
+    summary="List payment history for a pharmacy's subscription",
+)
+async def list_payments(
+    medical_store_id: int = Path(..., description="medical_store_id"),
+    skip: int = 0,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    from sqlalchemy import func, select
+
+    from models.payment import SubscriptionPayment
+    
+    await ensure_pharmacy_access(db, user, medical_store_id)
+    
+    count_stmt = select(func.count(SubscriptionPayment.payment_id)).where(
+        SubscriptionPayment.medical_store_id == medical_store_id
+    )
+    total = (await db.execute(count_stmt)).scalar() or 0
+    
+    stmt = (
+        select(SubscriptionPayment)
+        .where(SubscriptionPayment.medical_store_id == medical_store_id)
+        .order_by(SubscriptionPayment.paid_at.desc(), SubscriptionPayment.payment_id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    payments = (await db.execute(stmt)).scalars().all()
+    
+    return success_response(
+        PaymentListResponse(
+            payments=[PaymentOut.model_validate(p) for p in payments],
+            total=total
+        ).model_dump(),
+        "Payment history retrieved successfully",
     )

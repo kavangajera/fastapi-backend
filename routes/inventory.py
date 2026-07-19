@@ -26,7 +26,7 @@ from schemas.inventory import (
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
-from services.record_id_service import stamp_on_update
+from services.feature_gate import ensure_feature
 from services.inventory_service import (
     _to_decimal,
     adjust_inventory,
@@ -34,8 +34,8 @@ from services.inventory_service import (
     get_inventory_detail,
     search_inventory,
 )
-from services.feature_gate import ensure_feature
 from services.pharmacy_authz import ensure_pharmacy_access
+from services.record_id_service import stamp_on_update
 
 router = APIRouter(tags=["Inventory"])
 

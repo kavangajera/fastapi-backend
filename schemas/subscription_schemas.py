@@ -29,6 +29,13 @@ class SubscriptionOut(BaseModel):
     current_period_end: datetime
     cancelled_at: datetime | None = None
     notes: str | None = None
+    stripe_subscription_id: str | None = None
+
+
+class CancelRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    medical_store_id: int
+    cancel_immediately: bool = False
 
 
 class SubscribeRequest(BaseModel):

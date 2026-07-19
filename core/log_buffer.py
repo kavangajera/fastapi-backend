@@ -43,7 +43,7 @@ class LogBuffer:
 
         if level:
             level_upper = level.upper()
-            logs = [l for l in logs if l["level"] == level_upper]
+            logs = [line for line in logs if line["level"] == level_upper]
 
         return logs[-limit:]
 

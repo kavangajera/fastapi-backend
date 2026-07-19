@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import Column, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from core.async_db import AuditMixin, Base
@@ -36,6 +36,9 @@ class Pharmacy(AuditMixin, Base):
     state: Mapped[str | None] = mapped_column(String(120), nullable=True)
     zip_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
     store_code: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    phone = Column(String(20), nullable=True)
+    stripe_customer_id = Column(String(255), nullable=True, unique=True, comment="Stripe Customer ID")
+
 
     # lazy="selectin": every PharmacyOutput.owner read on an AsyncSession
     # would otherwise emit a lazy load mid-validation and crash with

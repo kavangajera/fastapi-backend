@@ -5,6 +5,7 @@ from .document import Document
 from .invoice import Invoice, InvoiceLineItem, InvoiceSummary
 from .medicine_inventory import MedicineInventory
 from .medicine_ndc_cache import MedicineNdcCache
+from .payment import SubscriptionPayment
 from .pharmacy import Pharmacy
 from .plan import Plan
 from .refill_dismissal import RefillDismissal
@@ -32,4 +33,5 @@ __all__ = [
     "Plan",
     "Subscription",
     "SubscriptionEvent",
+    "SubscriptionPayment",
 ]

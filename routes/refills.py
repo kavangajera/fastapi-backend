@@ -12,7 +12,6 @@ patient + drug. Dismissing a customer records a non-destructive opt-out in
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Path, Query
-from sqlalchemy import select
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 

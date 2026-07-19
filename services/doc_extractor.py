@@ -154,7 +154,7 @@ def _parse_pharmacy_header(cells: list[str]) -> dict[str, str]:
         hdr["fax"] = ph_m.group(2).strip()
 
     # Report date: first date-looking cell before "Page#:"
-    for i, c in enumerate(cells[:30]):
+    for _i, c in enumerate(cells[:30]):
         if re.match(r"\d{1,2}/\d{1,2}/\d{4}", c):
             hdr["report_date"] = c.strip()
             break
@@ -294,7 +294,6 @@ def _parse_cells(cells: list[str]) -> dict[str, Any]:
             packs: str | None = None
             total_cost: str | None = None
             ndc: str | None = None
-            drug_name_t: str | None = None
             rx_count_t: str | None = None
             total_price_t: str | None = None
             total_ins_t: str | None = None
@@ -324,7 +323,7 @@ def _parse_cells(cells: list[str]) -> dict[str, Any]:
                     _GRAND_TOTAL,
                 )
             ):
-                drug_name_t = cells[j]
+                # drug_name_t = cells[j]
                 j += 1
             if j < n and _INT_RE.match(cells[j]):
                 rx_count_t = cells[j]
@@ -348,7 +347,7 @@ def _parse_cells(cells: list[str]) -> dict[str, Any]:
                 j += 1
 
             if ndc:
-                for (d_name, n_key), med in medicines_map.items():
+                for (_d_name, n_key), med in medicines_map.items():
                     if n_key == ndc:
                         t = med["totals"]
                         if t["total_rx_count"] is None:
@@ -516,7 +515,7 @@ def _cells_from_rtf(file_bytes: bytes) -> list[str]:
     #   U+2010 HYPHEN              → regular hyphen
     text = text.replace("\u2011", "-").replace("\u2010", "-").replace("\u00a0", " ")
 
-    return [l.strip() for l in text.splitlines() if l.strip()]
+    return [line.strip() for line in text.splitlines() if line.strip()]
 
 
 # ──────────────────────────── DOCX text extraction ───────────────────────────
@@ -769,7 +768,7 @@ def _parse_docx_cells(cells: list[str]) -> dict[str, Any]:
                             total_ins_t = c2
                     j += 1
 
-                for (d_name, n_key), med in medicines_map.items():
+                for (_d_name, n_key), med in medicines_map.items():
                     if n_key == ndc_t:
                         t = med["totals"]
                         if t["total_rx_count"] is None:

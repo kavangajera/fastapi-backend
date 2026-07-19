@@ -19,11 +19,13 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
+from core.enums import Feature
 from middlewares.auth import auth_incoming_req
 from models import ActivityLog
 from schemas.activity import ActivityListResponse, ActivityRow
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.feature_gate import ensure_feature
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(tags=["Activity"])
@@ -55,6 +57,7 @@ async def list_activity(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.COMPLIANCE_REPORTS)
 
     filters = [ActivityLog.medical_store_id == ph_id]
     if date_from is not None:

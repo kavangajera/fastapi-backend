@@ -43,7 +43,7 @@ from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import log_activity
 from services.document_storage import document_storage
-from services.feature_gate import ensure_feature
+from services.feature_gate import ensure_feature, entitled_store_ids
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/documents", tags=["Document Processing"])
@@ -322,6 +322,9 @@ async def get_document_status(
             detail=f"Document '{doc_key}' not found.",
         )
     await ensure_pharmacy_access(db, user, doc.medical_store_id)
+    ptype = ProcessType(doc.process_type)
+    if ptype in _PROCESS_FEATURE:
+        await ensure_feature(db, doc.medical_store_id, _PROCESS_FEATURE[ptype])
     return success_response(
         DocumentStatusResponse.model_validate(doc), "Document retrieved successfully"
     )
@@ -352,11 +355,17 @@ async def list_documents(
                 Pharmacy.user_id == user.user_id
             )
             owner_ids = (await db.execute(owner_ids_stmt)).scalars().all()
+            owner_ids = await entitled_store_ids(db, list(owner_ids), Feature.INVENTORY_LITE)
             base = base.where(Document.medical_store_id.in_(owner_ids))
             count_stmt = count_stmt.where(Document.medical_store_id.in_(owner_ids))
         else:  # TECHNICIAN
-            base = base.where(Document.medical_store_id == user.medical_store_id)
-            count_stmt = count_stmt.where(Document.medical_store_id == user.medical_store_id)
+            entitled = await entitled_store_ids(db, [user.medical_store_id], Feature.INVENTORY_LITE)
+            if not entitled:
+                base = base.where(False)
+                count_stmt = count_stmt.where(False)
+            else:
+                base = base.where(Document.medical_store_id == user.medical_store_id)
+                count_stmt = count_stmt.where(Document.medical_store_id == user.medical_store_id)
 
     total = (await db.execute(count_stmt)).scalar() or 0
     docs = (await db.execute(base.offset(skip).limit(limit))).scalars().all()

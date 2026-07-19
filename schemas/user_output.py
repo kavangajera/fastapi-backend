@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import Field
 
 from core.enums import UserRole
 from schemas.audit_fields import AuditFields
