@@ -72,20 +72,23 @@ async def save_dispense_report(
     sub = await ensure_feature(db, body.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
 
     # ── Plan quota gate: drugs reconciled per report ────────────────
-    n_drugs = len(body.medicines)
-    if not within_limit(sub, "drug_reconciliation_limit", n_drugs):
-        cap = (sub.plan.limits or {}).get("drug_reconciliation_limit")
-        raise HTTPException(
-            status_code=status.HTTP_402_PAYMENT_REQUIRED,
-            detail={
-                "status_code": 402,
-                "message": (
-                    f"Your plan allows up to {cap} drugs reconciled per report; "
-                    f"this report has {n_drugs}. Upgrade to Ultimate for unlimited."
-                ),
-                "data": None,
-            },
-        )
+    # DISABLED AT LAUNCH: no drug-count limit for any plan for now. The 250 cap
+    # still lives in Plan.limits (Basic/Advanced) but is NOT enforced yet.
+    # To re-enable, uncomment the block below (and keep `within_limit` imported).
+    # n_drugs = len(body.medicines)
+    # if not within_limit(sub, "drug_reconciliation_limit", n_drugs):
+    #     cap = (sub.plan.limits or {}).get("drug_reconciliation_limit")
+    #     raise HTTPException(
+    #         status_code=status.HTTP_402_PAYMENT_REQUIRED,
+    #         detail={
+    #             "status_code": 402,
+    #             "message": (
+    #                 f"Your plan allows up to {cap} drugs reconciled per report; "
+    #                 f"this report has {n_drugs}. Upgrade to Ultimate for unlimited."
+    #             ),
+    #             "data": None,
+    #         },
+    #     )
 
     # ── Validation gate (micro-gated by the store's plan) ───────────
     report_data = body.model_dump(mode="json")
