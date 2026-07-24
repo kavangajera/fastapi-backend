@@ -22,6 +22,7 @@ from routes.inventory import router as inventory_router
 from routes.invoice import router as invoice_router
 from routes.invoice_save import router as invoice_save_router
 from routes.monitor import router as monitor_router
+from routes.ownership_transfer import router as ownership_transfer_router
 from routes.pharmacy_purchase_report import router as report_router
 from routes.reconciliation import router as reconciliation_router
 from routes.refills import router as refills_router
@@ -192,6 +193,7 @@ app.include_router(admin_subscription_router)
 app.include_router(reconciliation_router)
 app.include_router(temperature_logs_router)
 app.include_router(stripe_webhook_router)
+app.include_router(ownership_transfer_router)
 
 
 @app.get("/dashboard", response_class=HTMLResponse, include_in_schema=False)

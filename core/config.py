@@ -63,6 +63,43 @@ class Settings(BaseSettings):
     STRIPE_PUBLISHABLE_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
 
+    # ── Outbound email (SMTP) ───────────────────────────────────────
+    # Defaults target Gmail, so a working setup needs only TWO .env keys:
+    #
+    #     SMTP_USERNAME=you@gmail.com
+    #     SMTP_PASSWORD=<16-char Google App Password, no spaces>
+    #
+    # Gmail rejects your normal account password — generate an App Password
+    # at https://myaccount.google.com/apppasswords (2FA must be on).
+    # For another provider just override SMTP_HOST / SMTP_PORT.
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    # From-address; falls back to SMTP_USERNAME when left blank (Gmail
+    # rewrites the envelope sender to the authenticated account anyway).
+    SMTP_FROM_EMAIL: str = ""
+    SMTP_FROM_NAME: str = "Queue RX"
+    SMTP_USE_TLS: bool = True  # STARTTLS on port 587
+    SMTP_USE_SSL: bool = False  # implicit TLS — set with SMTP_PORT=465
+    SMTP_TIMEOUT_SECONDS: int = 20
+    # When true, emails are logged instead of sent (handy before SMTP creds
+    # exist). Auto-enabled at runtime if no SMTP_USERNAME is configured.
+    SMTP_DEBUG_LOG_ONLY: bool = False
+
+    # ── OTP / one-time codes ────────────────────────────────────────
+    OTP_LENGTH: int = 6
+    OTP_TTL_SECONDS: int = 600  # 10 min — used by transfer OTPs
+    OTP_MAX_ATTEMPTS: int = 5
+    PASSWORD_RESET_OTP_TTL_SECONDS: int = 900  # 15 min
+    # Lifetime of the short-lived JWT handed out after a reset OTP is
+    # verified; the client exchanges it for the actual password change.
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
+
+    # ── Pharmacy ownership transfer ─────────────────────────────────
+    # How long a pending transfer request stays actionable by the new owner.
+    TRANSFER_REQUEST_TTL_HOURS: int = 48
+
     model_config = ConfigDict(extra="forbid", env_file=".env")
 
 

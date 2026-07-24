@@ -7,6 +7,33 @@ class UserRole(str, Enum):  # Just for example
     ADMIN = "ADMIN"
 
 
+class OtpPurpose(str, Enum):
+    """What a one-time code was issued for.
+
+    An OTP is only ever accepted for the exact purpose (and scope) it was
+    issued under, so a code mailed for a password reset can never be
+    replayed against an ownership transfer.
+    """
+
+    PASSWORD_RESET = "PASSWORD_RESET"
+    TRANSFER_CREATE = "TRANSFER_CREATE"  # sent to the CURRENT owner
+    TRANSFER_ACCEPT = "TRANSFER_ACCEPT"  # sent to the NEW owner
+
+
+class OwnershipTransferStatus(str, Enum):
+    """Lifecycle of a pharmacy ownership-transfer request.
+
+    PENDING is the only actionable state. EXPIRED is applied lazily on read
+    once ``expires_at`` has passed — there is no background sweeper.
+    """
+
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"  # withdrawn by the current owner
+    EXPIRED = "EXPIRED"
+
+
 class PlanCode(str, Enum):
     """Subscription plan tiers (QueueRx Pricing Reference v2).
 

@@ -5,6 +5,8 @@ from .document import Document
 from .invoice import Invoice, InvoiceLineItem, InvoiceSummary
 from .medicine_inventory import MedicineInventory
 from .medicine_ndc_cache import MedicineNdcCache
+from .otp_code import OtpCode
+from .ownership_transfer import OwnershipTransferRequest
 from .payment import SubscriptionPayment
 from .pharmacy import Pharmacy
 from .plan import Plan
@@ -36,4 +38,6 @@ __all__ = [
     "SubscriptionEvent",
     "TemperatureLog",
     "SubscriptionPayment",
+    "OtpCode",
+    "OwnershipTransferRequest",
 ]

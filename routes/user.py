@@ -6,13 +6,18 @@ from core.enums import UserRole
 from middlewares.auth import auth_incoming_req
 from schemas.impersonate_input_schema import Impersonate_Input_Schema
 from schemas.login_input_user_schema import Login_Input_User_Schema
+from schemas.password_reset_schemas import (
+    ForgotPasswordInput,
+    ResetPasswordInput,
+    VerifyResetOtpInput,
+)
 from schemas.response_schema import Response_Schema
 from schemas.signup_input_user_schema import Signup_Input_User_Schema
 from schemas.signup_input_user_technician_schema import (
     Signup_Input_User_Technician_Schema,
 )
 from schemas.user_update_input import UserUpdateInput
-from services import user_service
+from services import password_reset_service, user_service
 
 
 def _raise_error(status_code: int, message: str):
@@ -69,6 +74,33 @@ async def logout_user(
 ):
     res = await user_service.logout_user(db, user)
     return success_response(res, "Logged out successfully")
+
+
+# ================= FORGOT / RESET PASSWORD (no middleware) =================
+
+
+async def forgot_password(
+    body: ForgotPasswordInput,
+    db: AsyncSession = Depends(get_async_db),
+):
+    res = await password_reset_service.request_password_reset(body, db)
+    return success_response(res, res["message"])
+
+
+async def verify_reset_otp(
+    body: VerifyResetOtpInput,
+    db: AsyncSession = Depends(get_async_db),
+):
+    res = await password_reset_service.verify_password_reset_otp(body, db)
+    return success_response(res, "Code verified. You can now set a new password.")
+
+
+async def reset_password(
+    body: ResetPasswordInput,
+    db: AsyncSession = Depends(get_async_db),
+):
+    res = await password_reset_service.reset_password(body, db)
+    return success_response(res, res["message"])
 
 
 # ================= IMPERSONATION (Super Admin) =================

@@ -35,6 +35,7 @@ from .user import (
     create_user,
     delete_me,
     delete_user,
+    forgot_password,
     get_all_users,
     get_my_profile,
     get_technicians,
@@ -44,8 +45,10 @@ from .user import (
     login_user,
     logout_user,
     renew_access_token,
+    reset_password,
     update_me,
     update_user,
+    verify_reset_otp,
 )
 
 router = APIRouter()
@@ -139,6 +142,67 @@ router.add_api_route(
     ),
     response_model=Response_Schema,
     operation_id="logout_user",
+)
+
+
+# ================= FORGOT / RESET PASSWORD =================
+#
+# Three steps: request a code → exchange it for a short-lived reset token →
+# set the new password with that token.
+
+router.add_api_route(
+    "/user/forgot-password",
+    endpoint=forgot_password,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="Step 1 — email a password-reset code",
+    description=(
+        "Emails a **6-digit verification code** to the address supplied.\n\n"
+        "**No authentication required.**\n\n"
+        "- The response is **identical whether or not the email is registered**, so "
+        "this endpoint cannot be used to discover which addresses have accounts.\n"
+        "- The code expires in 15 minutes and allows 5 attempts.\n"
+        "- Requesting a new code immediately invalidates the previous one.\n"
+        "- Next: `POST /user/verify-reset-otp`."
+    ),
+    response_model=Response_Schema,
+    operation_id="forgot_password",
+)
+
+router.add_api_route(
+    "/user/verify-reset-otp",
+    endpoint=verify_reset_otp,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="Step 2 — exchange the code for a reset token",
+    description=(
+        "Verifies the emailed code and returns a short-lived **`reset_token`** "
+        "(15 minutes) to be passed to `POST /user/reset-password`.\n\n"
+        "**No authentication required.**\n\n"
+        "- The code is consumed here — it cannot be reused.\n"
+        "- Wrong codes return `400` with the number of attempts remaining; the code "
+        "dies after 5 failures."
+    ),
+    response_model=Response_Schema,
+    operation_id="verify_reset_otp",
+)
+
+router.add_api_route(
+    "/user/reset-password",
+    endpoint=reset_password,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="Step 3 — set the new password",
+    description=(
+        "Sets a new password using the `reset_token` from step 2.\n\n"
+        "**No authentication required.**\n\n"
+        "- Minimum 8 characters, and it must differ from the current password.\n"
+        "- The token stops working once used.\n"
+        "- **Every existing session is revoked** — all refresh tokens are invalidated, "
+        "so the user must log in again everywhere."
+    ),
+    response_model=Response_Schema,
+    operation_id="reset_password",
 )
 
 
