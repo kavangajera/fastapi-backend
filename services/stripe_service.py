@@ -104,11 +104,11 @@ async def create_checkout_session(
         line_items=[{"price": price_id, "quantity": 1}],
         mode="subscription",
         success_url=(
-            f"{base_url}/public/success.html"
+            f"{base_url}/subscription/success"
             f"?session_id={{CHECKOUT_SESSION_ID}}&medical_store_id={medical_store_id}"
         ),
         cancel_url=(
-            f"{base_url}/public/cancel.html"
+            f"{base_url}/subscription/cancel"
             f"?medical_store_id={medical_store_id}"
         ),
         metadata={
