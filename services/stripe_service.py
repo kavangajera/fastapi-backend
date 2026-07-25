@@ -213,13 +213,30 @@ async def handle_checkout_completed(
     db: AsyncSession, session: dict
 ) -> None:
     """Webhook: checkout.session.completed — activate the subscription."""
+    from time import perf_counter
+
+    _h0 = perf_counter()
+
+    def _hms() -> float:
+        return round((perf_counter() - _h0) * 1000, 1)
+
+    logger.info("[checkout] H-1 handler start session_id={sid}", sid=session.get("id"))
+
     metadata = session.get("metadata", {})
     if not metadata.get("medical_store_id") or not metadata.get("plan_id"):
+        logger.warning(
+            "[checkout] H-1a missing metadata (medical_store_id/plan_id) — skipping. metadata={m}",
+            m=metadata,
+        )
         return
-        
+
     medical_store_id = int(metadata["medical_store_id"])
     plan_id = int(metadata["plan_id"])
     stripe_sub_id = session.get("subscription")
+    logger.info(
+        "[checkout] H-2 metadata ok ms_id={ms} plan_id={p} stripe_sub_id={s} +{t}ms",
+        ms=medical_store_id, p=plan_id, s=stripe_sub_id, t=_hms(),
+    )
 
     # Get or create subscription row
     result = await db.execute(
@@ -228,10 +245,13 @@ async def handle_checkout_completed(
         ).order_by(Subscription.subscription_id.desc()).limit(1)
     )
     sub = result.scalar_one_or_none()
+    logger.info("[checkout] H-3 existing subscription {found} +{t}ms", found=bool(sub), t=_hms())
 
     now = datetime.now(timezone.utc)
-    # Get period end from Stripe subscription
+    # Get period end from Stripe subscription  (BLOCKING network call to Stripe)
+    logger.info("[checkout] H-4 calling stripe.Subscription.retrieve({s})… +{t}ms", s=stripe_sub_id, t=_hms())
     stripe_sub = stripe.Subscription.retrieve(stripe_sub_id)
+    logger.info("[checkout] H-5 stripe.Subscription.retrieve returned +{t}ms", t=_hms())
     period_end = datetime.fromtimestamp(_get_period_end(stripe_sub), tz=timezone.utc)
 
     if sub:
@@ -264,6 +284,8 @@ async def handle_checkout_completed(
     )
     db.add(event)
     
+    logger.info("[checkout] H-6 subscription row upserted (pending commit) +{t}ms", t=_hms())
+
     # Handle the race condition where invoice.paid arrives before checkout.session.completed
     invoice_id = session.get("invoice")
     if invoice_id:
@@ -273,7 +295,9 @@ async def handle_checkout_completed(
             select(SubscriptionPayment).where(SubscriptionPayment.stripe_invoice_id == invoice_id)
         )
         if not existing_payment.scalar_one_or_none():
+            logger.info("[checkout] H-7 calling stripe.Invoice.retrieve({i})… +{t}ms", i=invoice_id, t=_hms())
             invoice = stripe.Invoice.retrieve(invoice_id)
+            logger.info("[checkout] H-8 stripe.Invoice.retrieve returned status={st} +{t}ms", st=getattr(invoice, "status", None), t=_hms())
             if getattr(invoice, "status", None) == "paid":
                 payment = SubscriptionPayment(
                     subscription_id=sub.subscription_id,
@@ -287,12 +311,14 @@ async def handle_checkout_completed(
                 )
                 db.add(payment)
 
+    logger.info("[checkout] H-9 committing to DB… +{t}ms", t=_hms())
     await db.commit()
     logger.info(
-        "Subscription activated via checkout: ms_id={ms} plan_id={p} stripe_sub={s}",
+        "[checkout] H-10 Subscription activated via checkout: ms_id={ms} plan_id={p} stripe_sub={s} total={t}ms",
         ms=medical_store_id,
         p=plan_id,
         s=stripe_sub_id,
+        t=_hms(),
     )
 
 
