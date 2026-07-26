@@ -114,9 +114,11 @@ class Settings(BaseSettings):
     # how much mail a single address can be made to receive.
     SIGNUP_OTP_RESEND_COOLDOWN_SECONDS: int = 60
     SIGNUP_OTP_MAX_SENDS: int = 5
-    # Per-IP budget on the unauthenticated signup endpoints. Best-effort and
-    # per API process — see core/rate_limit.py. Set the limit to 0 to disable.
-    SIGNUP_RATE_LIMIT_PER_IP: int = 15
+    # Per-email budget on the unauthenticated signup endpoints — deliberately
+    # not per-IP, so people sharing an office or carrier NAT do not throttle
+    # each other. Best-effort and per API process; see core/rate_limit.py.
+    # Set the limit to 0 to disable.
+    SIGNUP_RATE_LIMIT_PER_EMAIL: int = 15
     SIGNUP_RATE_LIMIT_WINDOW_SECONDS: int = 900
 
     # ── Pharmacy ownership transfer ─────────────────────────────────

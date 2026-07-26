@@ -41,28 +41,25 @@ def success_response(data, message: str = "Success", status_code: int = 200):
 
 async def signup_request_otp(
     user: Signup_Input_User_Schema,
-    request: Request,
     db: AsyncSession = Depends(get_async_db),
 ):
-    res = await signup_service.request_signup_otp(user, db, request)
+    res = await signup_service.request_signup_otp(user, db)
     return success_response(res, res["message"], 200)
 
 
 async def verify_signup_otp(
     body: VerifySignupOtpInput,
-    request: Request,
     db: AsyncSession = Depends(get_async_db),
 ):
-    res = await signup_service.verify_signup_otp(body, db, request)
+    res = await signup_service.verify_signup_otp(body, db)
     return success_response(res, "Email verified — account created successfully", 201)
 
 
 async def resend_signup_otp(
     body: ResendSignupOtpInput,
-    request: Request,
     db: AsyncSession = Depends(get_async_db),
 ):
-    res = await signup_service.resend_signup_otp(body, db, request)
+    res = await signup_service.resend_signup_otp(body, db)
     return success_response(res, res["message"], 200)
 
 

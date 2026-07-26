@@ -28,16 +28,20 @@ Security properties:
   ``SIGNUP_OTP_MAX_ATTEMPTS``; the code also expires on its own clock.
 * Requesting a new code invalidates the previous one — only the most
   recently mailed code is ever live.
-* Mail volume is capped per address (cooldown + total sends) and request
-  volume per caller IP, so neither the mailbox nor the 409 "already
-  registered" answer can be abused in bulk.
+* Everything is metered **per email address**, never per caller IP: mail
+  volume by the cooldown and total-send caps on the staged row, request
+  volume by the limiter in `core/rate_limit.py`. Two people signing up
+  from the same pharmacy or the same carrier NAT therefore never consume
+  each other's budget.
 
 Note on 409: this flow answers "that email is already registered"
 explicitly, which is a deliberate product decision for signup UX. It does
-mean the endpoint can confirm whether a given address has an account —
-the per-IP limiter in `core/rate_limit.py` is what keeps that from being
-harvestable at scale. `POST /user/forgot-password` still answers
-generically, so the two flows do not cancel each other out.
+mean the endpoint can confirm whether a given address has an account.
+Per-email metering bounds how hard any one address can be probed, but it
+cannot see a caller walking a list of addresses — that is a job for an
+edge limiter (nginx / Cloudflare), not this process.
+`POST /user/forgot-password` still answers generically, so the two flows
+do not cancel each other out.
 """
 
 from __future__ import annotations
@@ -47,7 +51,7 @@ from datetime import datetime, timedelta
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 from loguru import logger
 from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -93,7 +97,7 @@ def _ttl_minutes() -> int:
     return max(1, round(settings.SIGNUP_OTP_TTL_SECONDS / 60))
 
 
-# Two independent per-IP buckets. Mail-sending calls (step 1, resend) are
+# Two independent per-email buckets. Mail-sending calls (step 1, resend) are
 # the ones worth holding down; redeeming a code is already bounded by the
 # staged row's own attempt budget, so it gets its own allowance — otherwise
 # a handful of mistyped codes would lock the applicant out of the endpoint
@@ -102,15 +106,17 @@ _SCOPE_SEND = "signup-send"
 _SCOPE_VERIFY = "signup-verify"
 
 
-def _throttle(request: Request | None, scope: str, *, multiplier: int = 1) -> None:
-    """Per-IP budget on the unauthenticated signup endpoints."""
-    if request is None:
-        return
+def _throttle(email: str, scope: str, *, multiplier: int = 1) -> None:
+    """Per-email budget on the unauthenticated signup endpoints.
+
+    Keyed on the address being signed up, so one applicant's retries can
+    never exhaust another's allowance — the two share a NAT, not a bucket.
+    """
     rate_limit.enforce(
-        rate_limit.client_key(request, scope),
-        limit=settings.SIGNUP_RATE_LIMIT_PER_IP * multiplier,
+        rate_limit.subject_key(email, scope),
+        limit=settings.SIGNUP_RATE_LIMIT_PER_EMAIL * multiplier,
         window_seconds=settings.SIGNUP_RATE_LIMIT_WINDOW_SECONDS,
-        message="Too many signup requests from this device.",
+        message="Too many signup requests for this email.",
     )
 
 
@@ -224,11 +230,10 @@ def _sent_response(email: str) -> dict:
 async def request_signup_otp(
     payload: Signup_Input_User_Schema,
     db: AsyncSession,
-    request: Request | None = None,
 ) -> dict:
-    _throttle(request, _SCOPE_SEND)
-
     email = payload.user_email
+    _throttle(email, _SCOPE_SEND)
+
     await _purge_expired(db)
 
     if await _email_is_taken(db, email):
@@ -285,11 +290,10 @@ async def request_signup_otp(
 async def resend_signup_otp(
     payload: ResendSignupOtpInput,
     db: AsyncSession,
-    request: Request | None = None,
 ) -> dict:
-    _throttle(request, _SCOPE_SEND)
-
     email = payload.user_email
+    _throttle(email, _SCOPE_SEND)
+
     pending = await _get_pending(db, email)
 
     if pending is None or pending.expires_at <= _now():
@@ -318,11 +322,10 @@ async def resend_signup_otp(
 async def verify_signup_otp(
     payload: VerifySignupOtpInput,
     db: AsyncSession,
-    request: Request | None = None,
 ) -> dict:
-    _throttle(request, _SCOPE_VERIFY, multiplier=3)
-
     email = payload.user_email
+    _throttle(email, _SCOPE_VERIFY, multiplier=3)
+
     pending = await _get_pending(db, email)
 
     if pending is None:
