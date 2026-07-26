@@ -39,9 +39,10 @@ def _to_int(value: Any | None) -> int | None:
         return None
 
 
-def _build_dispense(disp_data: dict, medicine_id: int) -> Dispense:
+def _build_dispense(disp_data: dict, medicine_id: int, medical_store_id: int) -> Dispense:
     return Dispense(
         medicine_id=medicine_id,
+        medical_store_id=medical_store_id,
         qty_disp=_to_decimal(disp_data.get("qty_disp")),
         qty_ord=_to_decimal(disp_data.get("qty_ord")),
         days_supply=_to_int(disp_data.get("days_supply")),
@@ -106,7 +107,7 @@ async def store_report(
         await db.flush()
 
         for disp_data in med_data.get("dispenses", []):
-            db.add(_build_dispense(disp_data, db_med.id))
+            db.add(_build_dispense(disp_data, db_med.id, medical_store_id))
             total_dispenses += 1
 
     await db.flush()

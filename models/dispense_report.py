@@ -22,6 +22,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -122,6 +123,12 @@ class Dispense(AuditMixin, Base):
         nullable=False,
         index=True,
     )
+    medical_store_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("medical_store.medical_store_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     qty_disp: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
     qty_ord: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
@@ -142,6 +149,10 @@ class Dispense(AuditMixin, Base):
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     ins_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("medical_store_id", "rx_no", name="uq_dispenses_store_rx_no"),
+    )
 
     medicine: Mapped["Medicine"] = relationship("Medicine", back_populates="dispenses")
 

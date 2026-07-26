@@ -43,6 +43,32 @@ async def handle_dispense(
 
     tier1 = validate_tier1(report_data)
     report_data["validation"] = tier1.model_dump(mode="json")
+
+    # ── Duplicate rx_no detection ───────────────────────────────────
+    from sqlalchemy import select
+    from models.dispense_report import Dispense
+
+    incoming_rx_nos = [
+        d.get("rx_no")
+        for med in report_data.get("medicines", [])
+        for d in med.get("dispenses", [])
+        if d.get("rx_no")
+    ]
+    if incoming_rx_nos:
+        existing = await session.execute(
+            select(Dispense.rx_no).where(
+                Dispense.medical_store_id == medical_store_id,
+                Dispense.rx_no.in_(incoming_rx_nos),
+                Dispense.IsDeleted == False,
+            )
+        )
+        dupes = [row[0] for row in existing.all()]
+        if dupes:
+            raise ValueError(
+                f"Duplicate document: {len(dupes)} rx_no(s) already exist "
+                f"for this pharmacy. Duplicate rx_no: {dupes}"
+            )
+
     logger.info(
         "Dispense Tier-1 validation: ms_id={p} doc_key={dk} errors={e} warnings={w} info={i}",
         p=medical_store_id,

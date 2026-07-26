@@ -289,6 +289,33 @@ async def reverse_dispense_quantities(
     return updates
 
 
+async def reverse_single_dispense_qty(
+    session: AsyncSession,
+    *,
+    medical_store_id: int,
+    ndc: str,
+    qty_disp: Decimal | None,
+    direction: int = 1,
+) -> dict | None:
+    """
+    Reverse (+1) or subtract (-1) a single dispense's qty from inventory.
+    Used by the PATCH route for per-dispense inventory adjustments.
+    """
+    code = _normalize_ndc(ndc)
+    if not code or qty_disp is None or qty_disp == 0:
+        return None
+    delta = qty_disp * direction
+    new_qty = await _upsert_delta(
+        session,
+        medical_store_id=medical_store_id,
+        code=code,
+        delta=delta,
+        product_name=None,
+        last_invoice_id=None,
+    )
+    return {"code": code, "delta": str(delta), "new_quantity": str(new_qty)}
+
+
 async def get_inventory(session: AsyncSession, *, medical_store_id: int) -> list[MedicineInventory]:
     rows = await session.execute(
         select(MedicineInventory)

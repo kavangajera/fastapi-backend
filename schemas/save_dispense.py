@@ -97,6 +97,33 @@ class DispenseSaveRequest(AuditInputFields):
     validation: Any | None = None
 
 
+class DispensePatchLineInput(BaseModel):
+    """A single dispense line to patch — rx_no is the lookup key."""
+    model_config = ConfigDict(extra="forbid")
+    rx_no: str
+    qty_disp: str | None = None
+    qty_ord: str | None = None
+    days_supply: str | int | None = None
+    date_filled: str | None = None
+    ref: str | None = None
+    pat_name: str | None = None
+    pat_addr: str | None = None
+    pat_phone: str | None = None
+    pres_name: str | None = None
+    pres_addr: str | None = None
+    pres_phone: str | None = None
+    price: str | None = None
+    ins_paid: str | None = None
+    ins_code: str | None = None
+
+
+class DispensePatchRequest(AuditInputFields):
+    """Partial update: only the listed rx_no entries are touched."""
+    model_config = ConfigDict(extra="forbid")
+    medical_store_id: int
+    dispenses: list[DispensePatchLineInput]
+
+
 class DispenseSaveResponse(BaseModel):
     model_config = ConfigDict(extra="forbid")
     report_id: int
