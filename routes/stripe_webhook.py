@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 """
 routes/stripe_webhook.py
 ────────────────────────
@@ -11,16 +12,18 @@ step (usually a blocking call back to Stripe's API inside a handler).
 """
 
 from __future__ import annotations
+=======
+import json
+>>>>>>> Stashed changes
 
 import json
 from time import perf_counter
 
 import stripe
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Request, status
 from loguru import logger
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.async_db import get_async_db
+from core.async_db import AsyncSessionLocal
 from core.config import settings
 from services.stripe_service import (
     handle_checkout_completed,
@@ -32,9 +35,29 @@ from services.stripe_service import (
 
 router = APIRouter(prefix="/webhooks/stripe", tags=["Webhooks"])
 
+async def process_stripe_event(event_type: str, data: dict):
+    """Run webhook handling in the background with its own DB session."""
+    try:
+        async with AsyncSessionLocal() as db:
+            if event_type == "checkout.session.completed":
+                await handle_checkout_completed(db, data)
+            elif event_type == "invoice.paid":
+                await handle_invoice_paid(db, data)
+            elif event_type == "invoice.payment_failed":
+                await handle_invoice_failed(db, data)
+            elif event_type == "customer.subscription.deleted":
+                await handle_subscription_deleted(db, data)
+            elif event_type == "customer.subscription.updated":
+                await handle_subscription_updated(db, data)
+            else:
+                logger.debug("Unhandled event type: {t}", t=event_type)
+            await db.commit()
+    except Exception as exc:
+        logger.exception("Error handling webhook event {t}: {err}", t=event_type, err=exc)
+
 
 @router.post("")
-async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_db)):
+async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     """Handle Stripe webhook events."""
     t0 = perf_counter()
 
@@ -69,7 +92,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_
 
     logger.info("[CP-3] verifying signature… +{t}ms", t=ms())
     try:
-        event = stripe.Webhook.construct_event(
+        stripe.Webhook.construct_event(
             payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
         )
     except ValueError as exc:
@@ -82,8 +105,11 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_
         logger.error("[CP-3b] webhook construct error: {err} +{t}ms", err=exc, t=ms())
         raise HTTPException(status_code=400, detail="Webhook processing error") from exc
 
+<<<<<<< Updated upstream
     logger.info("[CP-4] signature verified OK +{t}ms", t=ms())
 
+=======
+>>>>>>> Stashed changes
     raw_event = json.loads(payload.decode("utf-8"))
     event_type = raw_event["type"]
     event_id = raw_event.get("id")
@@ -96,6 +122,7 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_
         t=ms(),
     )
 
+<<<<<<< Updated upstream
     handlers = {
         "checkout.session.completed": handle_checkout_completed,
         "invoice.paid": handle_invoice_paid,
@@ -129,3 +156,9 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_async_
     logger.info("[CP-8] handler for {et} completed OK +{t}ms", et=event_type, t=ms())
     logger.info("[CP-9] responding 200 (success) total={t}ms", t=ms())
     return {"status": "success"}
+=======
+    # Instantly schedule the database work in the background and return 200 OK!
+    background_tasks.add_task(process_stripe_event, event_type, data)
+
+    return {"status": "success", "message": "Event received and queued for background processing"}
+>>>>>>> Stashed changes

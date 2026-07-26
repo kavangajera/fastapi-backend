@@ -79,7 +79,8 @@ def _name_overlap(label: str | None, *fda_names: str | None) -> tuple[bool, str 
 
 
 def _parse_dispense_date(d_str: str | None) -> date | None:
-    if not d_str: return None
+    if not d_str:
+        return None
     import dateutil.parser
     try:
         return dateutil.parser.parse(d_str).date()
@@ -230,6 +231,38 @@ def _module_c(mi: int, ndc11: str, med: dict, cache_row, alerts: list[Alert]) ->
 # ─────────────────────────────────────────────────────────────────────
 
 
+
+def _module_d(mi: int, ndc11: str, med: dict, alerts: list[Alert]) -> None:
+    for di, disp in enumerate(med.get("dispenses", [])):
+        qty_str = disp.get("qty_disp")
+        days_str = disp.get("days_supply")
+        if qty_str is None or days_str is None or str(qty_str).strip() == "" or str(days_str).strip() == "":
+            continue
+        
+        qty = _to_decimal(qty_str)
+        days = _to_decimal(days_str)
+        
+        if qty is None or days is None or days == 0:
+            continue
+            
+        ratio = qty / days
+        if ratio != ratio.to_integral_value():
+            alerts.append(
+                Alert(
+                    module="D",
+                    code="FRACTIONAL_DAILY_DOSE",
+                    severity="WARNING",
+                    message=f"qty_disp / days_supply ({qty} / {days} = {ratio:.2f}) is not a whole number.",
+                    medicine_index=mi,
+                    dispense_index=di,
+                    ndc=ndc11,
+                    rx_no=disp.get("rx_no"),
+                    actual=f"{qty} / {days}",
+                    suggestion="Verify quantity dispensed and days supply.",
+                )
+            )
+
+
 async def validate_tier2(
     session: AsyncSession,
     report_data: dict,
@@ -288,6 +321,7 @@ async def validate_tier2(
                 _module_b(mi, ndc, drug_name, cache_row, alerts)
             if need_c:
                 _module_c(mi, ndc, med, cache_row, alerts)
+            _module_d(mi, ndc, med, alerts)
 
     # One lock marker per module the plan doesn't include.
     if not need_a:
