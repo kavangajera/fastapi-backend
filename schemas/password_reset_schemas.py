@@ -6,34 +6,16 @@ Request payloads for the three-step forgot-password flow.
 
 from __future__ import annotations
 
-import re
-
 from pydantic import BaseModel, Field, field_validator
 
-# Kept deliberately modest — signup does not enforce a policy today, so a
-# stricter rule here would let users lock themselves into a password they
-# cannot re-create.
-MIN_PASSWORD_LENGTH = 8
-
-# Plain `str` + this check rather than pydantic's EmailStr: the rest of the
-# codebase types emails as `str`, and EmailStr would pull in the optional
-# `email-validator` dependency for no real gain here.
-_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$")
-
-
-def normalize_email(value: str) -> str:
-    value = (value or "").strip().lower()
-    if not _EMAIL_RE.match(value):
-        raise ValueError("Enter a valid email address")
-    return value
-
-
-def _validate_password(value: str) -> str:
-    if len(value) < MIN_PASSWORD_LENGTH:
-        raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
-    if value.strip() != value:
-        raise ValueError("Password must not start or end with whitespace")
-    return value
+# The email/password rules live in `schemas.credentials` so signup and reset
+# cannot drift apart. Re-exported here because callers already import them
+# from this module.
+from schemas.credentials import (  # noqa: F401  (re-export)
+    MIN_PASSWORD_LENGTH,
+    normalize_email,
+    validate_password,
+)
 
 
 class ForgotPasswordInput(BaseModel):
@@ -91,4 +73,4 @@ class ResetPasswordInput(BaseModel):
     @field_validator("new_password")
     @classmethod
     def check_password(cls, value: str) -> str:
-        return _validate_password(value)
+        return validate_password(value)

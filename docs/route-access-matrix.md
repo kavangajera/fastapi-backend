@@ -42,6 +42,8 @@ in code (`ensure_feature`, `require_admin`, entitlement filters).
 | Route | Free | Basic | Advanced | Ultimate |
 |---|:--:|:--:|:--:|:--:|
 | 🔓 `POST /user/signup` | ✅ | ✅ | ✅ | ✅ |
+| 🔓 `POST /user/verify-signup-otp` | ✅ | ✅ | ✅ | ✅ |
+| 🔓 `POST /user/resend-signup-otp` | ✅ | ✅ | ✅ | ✅ |
 | 🔓 `POST /user/login` | ✅ | ✅ | ✅ | ✅ |
 | 🔓 `POST /app/login` | ✅ | ✅ | ✅ | ✅ |
 | 🔓 `GET /user/renew-access-token` | ✅ | ✅ | ✅ | ✅ |

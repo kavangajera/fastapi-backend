@@ -5,7 +5,7 @@ from argon2.exceptions import VerifyMismatchError
 from fastapi import HTTPException, Request, Response
 from loguru import logger
 from sqlalchemy import select
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.enums import UserRole
@@ -19,7 +19,6 @@ from models.pharmacy import Pharmacy
 from models.refresh_token import RefreshToken
 from models.user import User
 from schemas.login_input_user_schema import Login_Input_User_Schema
-from schemas.signup_input_user_schema import Signup_Input_User_Schema
 from schemas.signup_input_user_technician_schema import (
     Signup_Input_User_Technician_Schema,
 )
@@ -43,7 +42,7 @@ def _raise_error(status_code: int, message: str):
     )
 
 
-def _to_user_output(user_db: User) -> dict:
+def to_user_output(user_db: User) -> dict:
     return UserOutput.model_validate(user_db).model_dump(by_alias=False)
 
 
@@ -55,25 +54,43 @@ async def _get_owner_medical_store_ids(owner_id: int, db: AsyncSession) -> list[
 # ================= AUTH =================
 
 
-async def create_user(user: Signup_Input_User_Schema, db: AsyncSession):
-    ph = PasswordHasher()
-    username = user.user_email.split("@")[0]
+async def create_verified_user(
+    db: AsyncSession,
+    *,
+    username: str,
+    email: str,
+    contact_number: str,
+    password_hash: str,
+    device_id: str | None,
+) -> User:
+    """Insert the ``user`` row for a signup whose email is already verified.
+
+    There is deliberately **no** function here that creates an account from
+    a raw signup payload: the only caller is
+    ``services/signup_service.verify_signup_otp``, after a one-time code has
+    been redeemed, so no route can reach account creation without one. The
+    password arrives pre-hashed for the same reason — it was hashed when it
+    was staged, and this function never sees a plaintext credential.
+
+    The row is flushed, not committed: the caller owns the transaction and
+    commits it together with the deletion of the staged signup, so an
+    account and a still-redeemable code can never coexist.
+    """
     user_model = User(
         username=username,
-        email=user.user_email,
-        contact_number="1234567890",
-        password_hash=ph.hash(user.input_password),
+        email=email,
+        contact_number=contact_number,
+        password_hash=password_hash,
     )
     try:
         db.add(user_model)
         await db.flush()  # assign user_id before device association / stamping
-        if is_valid_device_id(user.device_id):
-            await resolve_device(
-                db, device_id=user.device_id, user_id=user_model.user_id
-            )
-        await stamp_on_create(db, user_model, user.device_id)
-        await db.commit()
-        await db.refresh(user_model)
+        if is_valid_device_id(device_id):
+            await resolve_device(db, device_id=device_id, user_id=user_model.user_id)
+        await stamp_on_create(db, user_model, device_id)
+    except IntegrityError:
+        await db.rollback()
+        _raise_error(409, "An account with this email already exists. Please log in.")
     except SQLAlchemyError as exc:
         await db.rollback()
         logger.error("Database error creating user: {err}", err=str(exc))
@@ -83,7 +100,7 @@ async def create_user(user: Signup_Input_User_Schema, db: AsyncSession):
         logger.error("Unexpected error creating user: {err}", err=str(exc))
         _raise_error(500, "Something went wrong while creating user")
 
-    return _to_user_output(user_model)
+    return user_model
 
 
 async def login_user(
@@ -332,7 +349,7 @@ async def create_technician(
         logger.error("Failed to create technician: {err}", err=str(exc))
         _raise_error(500, "Failed to create technician")
 
-    return _to_user_output(user_model)
+    return to_user_output(user_model)
 
 
 # ================= GET TECHNICIANS =================
@@ -364,7 +381,7 @@ async def get_technician_by_medical_store_id(
 
     result = await db.execute(stmt)
     technicians = result.scalars().all()
-    return [_to_user_output(u) for u in technicians]
+    return [to_user_output(u) for u in technicians]
 
 
 # ================= UPDATE USER =================
@@ -413,7 +430,7 @@ async def update_user(
         logger.error("Failed to update user: {err}", err=str(exc))
         _raise_error(500, "Failed to update user")
 
-    return _to_user_output(user_from_db)
+    return to_user_output(user_from_db)
 
 
 # ================= DELETE USER =================
@@ -485,7 +502,7 @@ async def update_self(
         logger.error("Failed to update profile: {err}", err=str(exc))
         _raise_error(500, "Failed to update profile")
 
-    return _to_user_output(user_from_db)
+    return to_user_output(user_from_db)
 
 
 async def delete_self(
@@ -514,7 +531,7 @@ async def delete_self(
 async def get_all_users(db: AsyncSession):
     result = await db.execute(select(User))
     users = result.scalars().all()
-    return [_to_user_output(u) for u in users]
+    return [to_user_output(u) for u in users]
 
 
 async def get_user_by_email(email: str, db: AsyncSession):
@@ -522,13 +539,13 @@ async def get_user_by_email(email: str, db: AsyncSession):
     user_from_db = result.scalar_one_or_none()
     if not user_from_db:
         _raise_error(404, f"No user found with email: {email}")
-    return _to_user_output(user_from_db)
+    return to_user_output(user_from_db)
 
 
 async def get_users_by_role(role: str, db: AsyncSession):
     result = await db.execute(select(User).where(User.role == role))
     users = result.scalars().all()
-    return [_to_user_output(u) for u in users]
+    return [to_user_output(u) for u in users]
 
 
 async def get_current_user_profile(user_id: int, db: AsyncSession):
@@ -536,4 +553,4 @@ async def get_current_user_profile(user_id: int, db: AsyncSession):
     user_from_db = result.scalar_one_or_none()
     if not user_from_db:
         _raise_error(404, "User not found")
-    return _to_user_output(user_from_db)
+    return to_user_output(user_from_db)

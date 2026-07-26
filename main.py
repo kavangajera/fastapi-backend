@@ -158,14 +158,19 @@ async def validation_exception_handler(request, exc: RequestValidationError):
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request, exc: HTTPException):
+    # `exc.headers` is forwarded: without it a 429 loses its `Retry-After`
+    # and a 401 its `WWW-Authenticate`, leaving the client nothing to act on.
     if isinstance(exc.detail, dict) and "status_code" in exc.detail:
         return JSONResponse(
-            status_code=exc.detail.get("status_code", exc.status_code), content=exc.detail
+            status_code=exc.detail.get("status_code", exc.status_code),
+            content=exc.detail,
+            headers=exc.headers,
         )
 
     return JSONResponse(
         status_code=exc.status_code,
         content={"status_code": exc.status_code, "message": str(exc.detail), "data": None},
+        headers=exc.headers,
     )
 
 

@@ -80,6 +80,14 @@ class Settings(BaseSettings):
     # rewrites the envelope sender to the authenticated account anyway).
     SMTP_FROM_EMAIL: str = ""
     SMTP_FROM_NAME: str = "Queue RX"
+    # Address replies actually reach. Falls back to the From address.
+    # "Do not reply" with no reachable Reply-To is a bulk-mail signal.
+    SMTP_REPLY_TO: str = ""
+    # Shown in the footer of every email. Receivers (and recipients) treat a
+    # real, identifiable sender as a legitimacy signal; a bare "automated
+    # message" footer is what bulk mail looks like. Set it to your operating
+    # name and city/address.
+    EMAIL_SENDER_IDENTITY: str = "Queue RX"
     SMTP_USE_TLS: bool = True  # STARTTLS on port 587
     SMTP_USE_SSL: bool = False  # implicit TLS — set with SMTP_PORT=465
     SMTP_TIMEOUT_SECONDS: int = 20
@@ -95,6 +103,21 @@ class Settings(BaseSettings):
     # Lifetime of the short-lived JWT handed out after a reset OTP is
     # verified; the client exchanges it for the actual password change.
     PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = 15
+
+    # ── Signup email verification ───────────────────────────────────
+    # How long a staged signup (and its code) stays redeemable before the
+    # applicant has to start over.
+    SIGNUP_OTP_TTL_SECONDS: int = 900  # 15 min
+    SIGNUP_OTP_MAX_ATTEMPTS: int = 5
+    # Minimum gap between two codes mailed to the same address, and the
+    # total number of codes one signup attempt may burn. Together they cap
+    # how much mail a single address can be made to receive.
+    SIGNUP_OTP_RESEND_COOLDOWN_SECONDS: int = 60
+    SIGNUP_OTP_MAX_SENDS: int = 5
+    # Per-IP budget on the unauthenticated signup endpoints. Best-effort and
+    # per API process — see core/rate_limit.py. Set the limit to 0 to disable.
+    SIGNUP_RATE_LIMIT_PER_IP: int = 15
+    SIGNUP_RATE_LIMIT_WINDOW_SECONDS: int = 900
 
     # ── Pharmacy ownership transfer ─────────────────────────────────
     # How long a pending transfer request stays actionable by the new owner.

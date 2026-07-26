@@ -42,7 +42,9 @@
 | GET | `/docs` | — | Swagger UI |
 | GET | `/openapi.json` | — | OpenAPI spec |
 | GET | `/dashboard` | — | served HTML monitor UI |
-| POST | `/user/signup` | — | create OWNER account |
+| POST | `/user/signup` | — | start signup, email a verification code (creates nothing) |
+| POST | `/user/verify-signup-otp` | — | redeem the code → creates the OWNER account |
+| POST | `/user/resend-signup-otp` | — | re-send the signup code |
 | POST | `/user/login` | — | obtain access token + refresh cookie |
 | GET | `/user/renew-access-token` | refresh cookie | new access token |
 | GET | `/user/me` | bearer | own profile |
@@ -80,23 +82,70 @@
 
 ## Auth
 
-### `POST /user/signup`
+### Signup — two steps, email-verified
 
-Create a new `PHARMACY_OWNER`. Email must be unique.
+Registration requires proof that the applicant controls the address.
+`POST /user/signup` **does not create an account**; it stages the
+credentials in `pending_signup` and mails a 6-digit code. The account
+exists only once `POST /user/verify-signup-otp` succeeds. There is no
+other code path that writes a `user` row (technicians excepted — those are
+created by an already-authenticated owner via `/user/create-technician`).
+
+#### `POST /user/signup` — step 1
+
+Email must be unique (409 if taken) and the password at least 8
+characters. The password is Argon2id-hashed on arrival and is never stored
+in the clear, not even while pending.
 
 **Body**
 ```json
 {
   "user_email": "owner@example.com",
-  "input_password": "Secret123!"
+  "input_password": "Secret123!",
+  "device_id": "a1B2c3"
 }
 ```
 
 **200 (envelope)**
 ```json
-{ "status_code": 201, "message": "User created successfully",
+{ "status_code": 200,
+  "message": "A verification code has been sent to owner@example.com. Enter it to finish creating your account.",
+  "data": { "email_sent": true, "user_email": "owner@example.com",
+            "expires_in_minutes": 15,
+            "message": "A verification code has been sent to owner@example.com. Enter it to finish creating your account." } }
+```
+
+| Status | When |
+|---|---|
+| 409 | that email already has an account |
+| 422 | password under 8 chars, or malformed email |
+| 429 | another code was requested under 60s ago, 5 codes already sent for this signup, or the caller IP is over budget (`Retry-After` set) |
+
+#### `POST /user/verify-signup-otp` — step 2 (creates the account)
+
+**Body**
+```json
+{ "user_email": "owner@example.com", "otp_code": "482913", "device_id": "a1B2c3" }
+```
+
+**200 (envelope)**
+```json
+{ "status_code": 201, "message": "Email verified — account created successfully",
   "data": { "user_id": 1, "email": "owner@example.com", "role": "OWNER" } }
 ```
+
+The staged signup is deleted in the same transaction that creates the
+user, so the code cannot be replayed. A wrong code returns `400` with the
+attempts remaining; after 5 failures — or once the code expires (15 min) —
+the staged signup is discarded and signup must be started again (`404` on
+the next attempt).
+
+#### `POST /user/resend-signup-otp`
+
+**Body**: `{ "user_email": "owner@example.com" }` — mails a fresh code for a
+signup already in flight and invalidates the previous one. The password is
+not resubmitted, so a resend cannot change it. `404` if nothing is pending
+for that address; `429` while inside the cooldown or over the send cap.
 
 ### `POST /user/login`
 
@@ -526,9 +575,11 @@ operators.
 For a fresh clean run on dispense:
 
 ```bash
-# 1. Signup + login (capture access_token)
-POST /user/signup    { user_email, input_password }
-POST /user/login     { user_email, input_password }   → access_token
+# 1. Signup (2 steps — the code arrives by email; with no SMTP configured
+#    it is written to the log instead) + login (capture access_token)
+POST /user/signup             { user_email, input_password }   → code mailed
+POST /user/verify-signup-otp  { user_email, otp_code }         → account created
+POST /user/login              { user_email, input_password }   → access_token
 # Click "Authorize" in Swagger and paste the token.
 
 # 2. Create a store

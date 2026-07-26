@@ -16,6 +16,7 @@
 | `user` | `User` | Pharmacy owners, technicians, admins | — |
 | `medical_store` | `Pharmacy` (Python) | One row per medical store / retail pharmacy | — |
 | `refresh_tokens` | `RefreshToken` | Hashed refresh JWTs per user | — |
+| `pending_signup` | `PendingSignup` | Signups awaiting email verification — staged credentials + hashed OTP; deleted when the code is redeemed | — |
 | `documents` | `Document` | One row per file uploaded to `POST /documents/process` (Kafka pipeline state machine) | — |
 | `invoices` | `Invoice` | Header of a purchase invoice | top-level fields of the invoice extraction JSON |
 | `invoice_line_items` | `InvoiceLineItem` | Each line item on an invoice | `line_items[]` |
@@ -84,7 +85,7 @@
 |---|---|---|
 | `user_id` | INT PK | auto-increment |
 | `username` | VARCHAR(100) | derived from email part before `@` on signup |
-| `email` | VARCHAR(255) | UNIQUE INDEX |
+| `email` | VARCHAR(255) | UNIQUE INDEX; normalized to lowercase on signup |
 | `contact_number` | VARCHAR(10) | |
 | `password_hash` | VARCHAR(255) | argon2 |
 | `role` | ENUM(`OWNER`, `TECHNICIAN`, `ADMIN`) | from `core.enums.UserRole`; default `OWNER` |
@@ -94,6 +95,30 @@ Relationships:
 - `refresh_tokens` (1-N) → `refresh_tokens.user_id`
 - `pharmacies_owns` (1-N) → `medical_store.user_id`
 - `pharmacies_works` (1-N) → `medical_store` via reverse of `User.medical_store_id`
+
+A row only ever appears here after the email address has been verified —
+signup stages into `pending_signup` first (see below). There is no
+"unverified user" state to check for.
+
+### `pending_signup`
+
+A registration in flight. Not an account: nothing here can authenticate,
+which is why it is a separate table rather than a flag on `user`.
+
+| Column | Type | Notes |
+|---|---|---|
+| `pending_signup_id` | INT PK | auto-increment |
+| `email` | VARCHAR(255) | UNIQUE INDEX — one signup in flight per address |
+| `username` / `contact_number` | VARCHAR | carried over verbatim when the `user` row is created |
+| `password_hash` | VARCHAR(255) | argon2id — hashed on arrival, never plaintext |
+| `code_hash` | VARCHAR(255) | argon2id hash of the emailed OTP |
+| `attempts` / `max_attempts` | INT | wrong guesses; the row is deleted once the budget runs out |
+| `expires_at` | DATETIME | indexed; drives the opportunistic purge of abandoned signups |
+| `send_count` / `last_sent_at` | INT / DATETIME | resend cooldown + total-sends cap |
+| `device_id` | VARCHAR(16) | the device that started signup, used to stamp the new `user` row |
+
+The row is deleted in the **same transaction** that inserts into `user`, so
+a redeemed code and a created account can never come apart.
 
 ### `medical_store` — class name is `Pharmacy`
 

@@ -16,8 +16,9 @@ from schemas.signup_input_user_schema import Signup_Input_User_Schema
 from schemas.signup_input_user_technician_schema import (
     Signup_Input_User_Technician_Schema,
 )
+from schemas.signup_otp_schemas import ResendSignupOtpInput, VerifySignupOtpInput
 from schemas.user_update_input import UserUpdateInput
-from services import password_reset_service, user_service
+from services import password_reset_service, signup_service, user_service
 
 
 def _raise_error(status_code: int, message: str):
@@ -31,15 +32,41 @@ def success_response(data, message: str = "Success", status_code: int = 200):
     return Response_Schema(status_code=status_code, message=message, data=data)
 
 
-# ================= AUTH (no middleware) =================
+# ================= SIGNUP — OTP VERIFIED (no middleware) =================
+#
+# Step 1 stages the credentials and mails a code; step 2 is the only place
+# an account is created. `create_user` no longer exists — there is no
+# handler that writes a `user` row without a redeemed code.
 
 
-async def create_user(
+async def signup_request_otp(
     user: Signup_Input_User_Schema,
+    request: Request,
     db: AsyncSession = Depends(get_async_db),
 ):
-    res = await user_service.create_user(user, db)
-    return success_response(res, "User created successfully", 201)
+    res = await signup_service.request_signup_otp(user, db, request)
+    return success_response(res, res["message"], 200)
+
+
+async def verify_signup_otp(
+    body: VerifySignupOtpInput,
+    request: Request,
+    db: AsyncSession = Depends(get_async_db),
+):
+    res = await signup_service.verify_signup_otp(body, db, request)
+    return success_response(res, "Email verified — account created successfully", 201)
+
+
+async def resend_signup_otp(
+    body: ResendSignupOtpInput,
+    request: Request,
+    db: AsyncSession = Depends(get_async_db),
+):
+    res = await signup_service.resend_signup_otp(body, db, request)
+    return success_response(res, res["message"], 200)
+
+
+# ================= AUTH (no middleware) =================
 
 
 async def login_user(

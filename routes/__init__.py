@@ -8,6 +8,7 @@ from schemas.response_models import (
     PharmacyDeleteResponse,
     PharmacyListResponse,
     PharmacyUpdateResponse,
+    SignupOtpSentResponse,
     SignupResponse,
     TechnicianCreateResponse,
     TechnicianListResponse,
@@ -32,7 +33,6 @@ from .pharmacy import (
 from .user import (
     app_login_user,
     create_technician,
-    create_user,
     delete_me,
     delete_user,
     forgot_password,
@@ -45,10 +45,13 @@ from .user import (
     login_user,
     logout_user,
     renew_access_token,
+    resend_signup_otp,
     reset_password,
+    signup_request_otp,
     update_me,
     update_user,
     verify_reset_otp,
+    verify_signup_otp,
 )
 
 router = APIRouter()
@@ -56,21 +59,77 @@ router = APIRouter()
 
 # ================= AUTH ROUTES =================
 
+# ── Signup: email-verified, two steps ───────────────────────────────
+#
+# `POST /user/signup` **no longer creates an account** — it stages the
+# credentials and mails a code. `POST /user/verify-signup-otp` is the only
+# endpoint that writes a `user` row.
+
 router.add_api_route(
     "/user/signup",
-    endpoint=create_user,
+    endpoint=signup_request_otp,
     methods=["POST"],
     tags=["Auth"],
-    summary="Register a new user account",
+    summary="Step 1 — start signup and email a verification code",
     description=(
-        "Creates a new **PHARMACY_OWNER** account with the provided credentials.\n\n"
+        "Stages the credentials for a new **PHARMACY_OWNER** account and emails a "
+        "**6-digit verification code** to the address supplied.\n\n"
+        "⚠️ **No account is created by this call.** The account exists only after "
+        "`POST /user/verify-signup-otp` succeeds — an unverified email can never "
+        "hold a Queue RX account.\n\n"
         "**No authentication required.**\n\n"
-        "- Emails must be unique — duplicate emails are rejected with a 500 error.\n"
-        "- The password is hashed server-side with Argon2 before storage.\n"
-        "- After signup, call `POST /user/login` to obtain an access token."
+        "- Emails must be unique — an address that already has an account is "
+        "rejected with **409**.\n"
+        "- Password must be at least 8 characters; it is hashed with Argon2id "
+        "immediately and is never stored in the clear, even while pending.\n"
+        "- The code expires in 15 minutes and allows 5 attempts.\n"
+        "- Calling this again for the same email replaces the staged credentials "
+        "and invalidates the previous code (subject to a 60s cooldown → **429**).\n"
+        "- Next: `POST /user/verify-signup-otp`."
+    ),
+    response_model=SignupOtpSentResponse,
+    operation_id="signup_request_otp",
+)
+
+router.add_api_route(
+    "/user/verify-signup-otp",
+    endpoint=verify_signup_otp,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="Step 2 — verify the code and create the account",
+    description=(
+        "Verifies the emailed code and **creates the account**, returning the new "
+        "user profile.\n\n"
+        "**No authentication required.**\n\n"
+        "- The code is consumed here — the staged signup is deleted in the same "
+        "transaction that creates the user, so it cannot be replayed.\n"
+        "- Wrong codes return `400` with the number of attempts remaining; after 5 "
+        "failures (or once the code expires) the staged signup is discarded and "
+        "signup must be started again.\n"
+        "- Next: `POST /user/login` to obtain an access token."
     ),
     response_model=SignupResponse,
-    operation_id="create_user",
+    operation_id="verify_signup_otp",
+)
+
+router.add_api_route(
+    "/user/resend-signup-otp",
+    endpoint=resend_signup_otp,
+    methods=["POST"],
+    tags=["Auth"],
+    summary="Re-send the signup verification code",
+    description=(
+        "Mails a **fresh code** for a signup already awaiting verification, without "
+        "resubmitting the password.\n\n"
+        "**No authentication required.**\n\n"
+        "- The previous code stops working immediately.\n"
+        "- Rate limited: 60s between codes, and at most 5 codes per signup attempt "
+        "— both return **429**.\n"
+        "- Returns **404** if nothing is pending for that email (never started, or "
+        "already expired) — start over with `POST /user/signup`."
+    ),
+    response_model=SignupOtpSentResponse,
+    operation_id="resend_signup_otp",
 )
 
 router.add_api_route(

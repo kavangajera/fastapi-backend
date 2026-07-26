@@ -8,6 +8,7 @@ from .medicine_ndc_cache import MedicineNdcCache
 from .otp_code import OtpCode
 from .ownership_transfer import OwnershipTransferRequest
 from .payment import SubscriptionPayment
+from .pending_signup import PendingSignup
 from .pharmacy import Pharmacy
 from .plan import Plan
 from .refill_dismissal import RefillDismissal
@@ -40,4 +41,5 @@ __all__ = [
     "SubscriptionPayment",
     "OtpCode",
     "OwnershipTransferRequest",
+    "PendingSignup",
 ]

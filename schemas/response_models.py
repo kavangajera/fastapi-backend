@@ -106,18 +106,73 @@ class PharmacyDeleteData(BaseModel):
 # ───────────────── Auth Responses ──────────────────
 
 
+class SignupOtpSentData(BaseModel):
+    """Outcome of a signup step that mails a code but creates nothing."""
+
+    email_sent: bool = Field(
+        ..., description="True once the code has been handed to the mail server.", examples=[True]
+    )
+    user_email: str = Field(
+        ..., description="Normalized address the code went to.", examples=["user2@gmail.com"]
+    )
+    expires_in_minutes: int = Field(
+        ..., description="How long the code stays valid.", examples=[15]
+    )
+    message: str = Field(..., description="User-facing summary.")
+
+
+class SignupOtpSentResponse(BaseModel):
+    """``POST /user/signup`` and ``POST /user/resend-signup-otp`` — code mailed.
+
+    **No account exists yet** at this point; see ``SignupResponse``.
+    """
+
+    status_code: int = Field(..., description="Logical HTTP status code.", examples=[200])
+    message: str = Field(..., description="Result summary.")
+    data: SignupOtpSentData = Field(..., description="Delivery details for the code.")
+
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "status_code": 200,
+                "message": (
+                    "A verification code has been sent to user2@gmail.com. "
+                    "Enter it to finish creating your account."
+                ),
+                "data": {
+                    "email_sent": True,
+                    "user_email": "user2@gmail.com",
+                    "expires_in_minutes": 15,
+                    "message": (
+                        "A verification code has been sent to user2@gmail.com. "
+                        "Enter it to finish creating your account."
+                    ),
+                },
+            }
+        }
+    }
+
+
 class SignupResponse(BaseModel):
-    """``POST /user/signup`` — creates a new PHARMACY_OWNER account."""
+    """``POST /user/verify-signup-otp`` — creates the PHARMACY_OWNER account.
+
+    This is the *only* response in which a Queue RX account comes into
+    existence; `POST /user/signup` merely mails the code that gets here.
+    """
 
     status_code: int = Field(..., description="Logical HTTP status code.", examples=[201])
-    message: str = Field(..., description="Result summary.", examples=["User created successfully"])
+    message: str = Field(
+        ...,
+        description="Result summary.",
+        examples=["Email verified — account created successfully"],
+    )
     data: UserData = Field(..., description="Newly created user profile.")
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "status_code": 201,
-                "message": "User created successfully",
+                "message": "Email verified — account created successfully",
                 "data": {
                     "user_id": 4,
                     "email": "user2@gmail.com",
