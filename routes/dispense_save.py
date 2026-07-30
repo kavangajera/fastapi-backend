@@ -508,192 +508,22 @@ async def update_dispense_report(
     "/dispenses",
     response_model=Response_Schema,
     status_code=status.HTTP_200_OK,
-    summary="Partially update dispenses by rx_no — only listed prescriptions are touched",
+    summary="Partially update dispenses by rx_no using full JSON with validation",
+    description=(
+        "Accepts a full DispenseSaveRequest JSON. Filters for existing rx_nos, "
+        "runs Tier 1 and Tier 2 validation on that subset, and patches the "
+        "existing dispenses. Respects force_save just like POST /dispenses."
+    ),
 )
 async def patch_dispenses(
-    body: DispensePatchRequest,
+    body: DispenseSaveRequest,
     db: AsyncSession = Depends(get_async_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, body.medical_store_id)
-    await ensure_feature(db, body.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
+    sub = await ensure_feature(db, body.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
 
-    # ── Look up existing dispenses by rx_no for this pharmacy ───────
-    rx_nos = [d.rx_no for d in body.dispenses]
-    rows = await db.execute(
-        select(Dispense).where(
-            Dispense.medical_store_id == body.medical_store_id,
-            Dispense.rx_no.in_(rx_nos),
-            Dispense.IsDeleted == False,
-        )
-    )
-    existing_map: dict[str, Dispense] = {}
-    for disp in rows.scalars().all():
-        existing_map[disp.rx_no] = disp
-
-    missing = [rx for rx in rx_nos if rx not in existing_map]
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={
-                "status_code": 404,
-                "message": f"rx_no(s) not found for this pharmacy: {missing}",
-                "data": {"missing_rx_nos": missing},
-            },
-        )
-
-    # ── Patch each dispense ─────────────────────────────────────────
-    # We need the parent Medicine's NDC for inventory adjustments.
-    # Pre-load all affected medicine_ids.
-    medicine_ids = {d.medicine_id for d in existing_map.values()}
-    med_rows = await db.execute(
-        select(Medicine).where(Medicine.id.in_(medicine_ids))
-    )
-    medicine_map: dict[int, Medicine] = {m.id: m for m in med_rows.scalars().all()}
-
-    inventory_updates = []
-    patched_count = 0
-
-    try:
-        for patch_line in body.dispenses:
-            db_disp = existing_map[patch_line.rx_no]
-            parent_med = medicine_map[db_disp.medicine_id]
-
-            # 1. Reverse old inventory for this dispense
-            if db_disp.qty_disp is not None:
-                rev = await reverse_single_dispense_qty(
-                    db,
-                    medical_store_id=body.medical_store_id,
-                    ndc=parent_med.ndc,
-                    qty_disp=db_disp.qty_disp,
-                    direction=1,  # +qty to reverse
-                )
-                if rev:
-                    inventory_updates.append(rev)
-
-            # 2. Apply non-None fields from the patch
-            patch_data = patch_line.model_dump(exclude_unset=True, exclude={"rx_no"})
-            for field, value in patch_data.items():
-                if value is not None:
-                    if field in ("qty_disp", "qty_ord", "price", "ins_paid"):
-                        setattr(db_disp, field, _to_decimal(value))
-                    elif field == "days_supply":
-                        setattr(db_disp, field, _to_int(value))
-                    else:
-                        setattr(db_disp, field, value)
-
-            # 3. Subtract new inventory for this dispense
-            if db_disp.qty_disp is not None:
-                sub = await reverse_single_dispense_qty(
-                    db,
-                    medical_store_id=body.medical_store_id,
-                    ndc=parent_med.ndc,
-                    qty_disp=db_disp.qty_disp,
-                    direction=-1,  # -qty to subtract
-                )
-                if sub:
-                    inventory_updates.append(sub)
-
-            patched_count += 1
-
-        # ── Recalculate parent Medicine totals ──────────────────────
-        for med_id in medicine_ids:
-            med = medicine_map[med_id]
-            disp_rows = await db.execute(
-                select(Dispense).where(
-                    Dispense.medicine_id == med_id,
-                    Dispense.IsDeleted == False,
-                )
-            )
-            dispenses = list(disp_rows.scalars().all())
-            med.total_rx_count = len(dispenses)
-            med.total_price = sum(
-                (d.price or Decimal("0")) for d in dispenses
-            ) or None
-            med.total_ins_paid = sum(
-                (d.ins_paid or Decimal("0")) for d in dispenses
-            ) or None
-
-        # ── Recalculate DrugReport grand totals ────────────────────
-        report_ids = set()
-        for med in medicine_map.values():
-            report_ids.add(med.report_id)
-        for report_id in report_ids:
-            report_res = await db.execute(
-                select(DrugReport).where(DrugReport.id == report_id)
-            )
-            report = report_res.scalar_one()
-            med_res = await db.execute(
-                select(Medicine).where(Medicine.report_id == report_id)
-            )
-            meds = list(med_res.scalars().all())
-            report.grand_total_rx_count = sum(m.total_rx_count or 0 for m in meds) or None
-            report.grand_total_price = sum(m.total_price or Decimal("0") for m in meds) or None
-
-        await log_activity(
-            db,
-            medical_store_id=body.medical_store_id,
-            actor=user,
-            action="DISPENSE_PATCHED",
-            entity_type="dispense",
-            entity_id=None,
-            summary=f"Patched {patched_count} dispense(s) by rx_no",
-            search_blob=build_search_blob(*rx_nos),
-        )
-        await db.commit()
-    except SQLAlchemyError as exc:
-        await db.rollback()
-        logger.exception("Failed to patch dispenses: {err}", err=exc)
-        raise
-
-    logger.info(
-        "Dispenses patched: ms_id={ph} count={n}",
-        ph=body.medical_store_id,
-        n=patched_count,
-    )
-
-    from decimal import Decimal
-    return success_response(
-        {
-            "medical_store_id": body.medical_store_id,
-            "dispenses_patched": patched_count,
-            "inventory_updates": [InventoryUpdate(**u) for u in inventory_updates],
-        },
-        "Dispenses patched successfully",
-        status_code=200,
-    )
-
-
-@router.patch(
-    "/dispenses/document",
-    response_model=Response_Schema,
-    status_code=status.HTTP_200_OK,
-    summary="Patch existing dispenses using a full document file upload",
-)
-async def patch_dispenses_from_document(
-    medical_store_id: int = Form(..., description="Medical store the doc belongs to"),
-    force_save: bool = Form(False, description="Force save ignoring warnings/errors"),
-    file: UploadFile = File(..., description="The corrected dispense document (PDF/Excel)"),
-    db: AsyncSession = Depends(get_async_db),
-    user: System_Internal_User_Schema = Depends(auth_incoming_req),
-):
-    await ensure_pharmacy_access(db, user, medical_store_id)
-    sub = await ensure_feature(db, medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
-
-    import asyncio
-    from services.document_extractor import extract_report_from_file
-
-    file_bytes = await file.read()
-    filename = file.filename or "unknown"
-    
-    # 1. Extract JSON from the file synchronously
-    report_data = await asyncio.to_thread(extract_report_from_file, file_bytes, filename)
-    report_data["medical_store_id"] = medical_store_id
-    
-    # Validate against our schema to ensure structural correctness
-    body = DispenseSaveRequest(**report_data, force_save=force_save)
-
-    # 2. Collect all rx_no from the incoming document
+    # 1. Collect all rx_no from the incoming request
     incoming_rx_nos = [
         d.rx_no
         for med in body.medicines
@@ -724,18 +554,18 @@ async def patch_dispenses_from_document(
             detail="None of the rx_no values in the document exist in the database for this pharmacy."
         )
 
-    # 4. Filter the report data so validation ONLY runs on matched rx_nos
+    # 3. Filter the report data so validation ONLY runs on matched rx_nos
     report_data_dump = body.model_dump(mode="json")
     filtered_report_data = _filter_report_for_patch(report_data_dump, set(existing_map.keys()))
 
-    # 5. Run Tier 1 and Tier 2 validation on the filtered subset
+    # 4. Run Tier 1 and Tier 2 validation on the filtered subset
     granted = set(sub.plan.features or []) if sub.plan is not None else None
     tier1 = validate_tier1(filtered_report_data, granted=granted)
     validation = await validate_tier2(db, filtered_report_data, tier1_report=tier1, granted=granted)
 
     if validation.summary.blocking and not body.force_save:
         logger.info(
-            "Dispense document patch blocked: ms_id={p} errors={e} warnings={w}",
+            "Dispense JSON patch blocked: ms_id={p} errors={e} warnings={w}",
             p=body.medical_store_id,
             e=validation.summary.errors,
             w=validation.summary.warnings,
@@ -745,7 +575,7 @@ async def patch_dispenses_from_document(
             detail={
                 "status_code": 422,
                 "message": (
-                    f"Document patch blocked by {validation.summary.errors} validation "
+                    f"JSON patch blocked by {validation.summary.errors} validation "
                     "error(s). Fix the listed issues and resubmit, or set "
                     "`force_save: true` to persist anyway."
                 ),
@@ -754,7 +584,7 @@ async def patch_dispenses_from_document(
         )
 
     forced = validation.summary.blocking and body.force_save
-    
+
     # 5. Patch the matched dispenses
     medicine_ids = {d.medicine_id for d in existing_map.values()}
     med_rows = await db.execute(select(Medicine).where(Medicine.id.in_(medicine_ids)))
@@ -763,12 +593,16 @@ async def patch_dispenses_from_document(
     inventory_updates = []
     patched_count = 0
     medicines_with_errors = 0
+    errors_by_med = _alerts_by_medicine(validation) if forced else {}
 
     try:
-        # Re-construct body from filtered data to loop through it
         filtered_body = DispenseSaveRequest.model_validate(filtered_report_data)
         
         for idx, med_in in enumerate(filtered_body.medicines):
+            med_errors = errors_by_med.get(idx)
+            if med_errors:
+                medicines_with_errors += 1
+                
             for disp_in in med_in.dispenses:
                 db_disp = existing_map[disp_in.rx_no]
                 parent_med = medicine_map[db_disp.medicine_id]
@@ -798,30 +632,34 @@ async def patch_dispenses_from_document(
 
                 # Subtract new inventory
                 if db_disp.qty_disp is not None:
-                    sub = await reverse_single_dispense_qty(
+                    sub_inv = await reverse_single_dispense_qty(
                         db,
                         medical_store_id=body.medical_store_id,
                         ndc=parent_med.ndc,
                         qty_disp=db_disp.qty_disp,
                         direction=-1,
                     )
-                    if sub:
-                        inventory_updates.append(sub)
+                    if sub_inv:
+                        inventory_updates.append(sub_inv)
 
                 patched_count += 1
 
-        # Recalculate totals (same as simple patch route)
+        # Recalculate parent Medicine totals
         for med_id in medicine_ids:
             med = medicine_map[med_id]
             disp_rows = await db.execute(
-                select(Dispense).where(Dispense.medicine_id == med_id, Dispense.IsDeleted == False)
+                select(Dispense).where(
+                    Dispense.medicine_id == med_id,
+                    Dispense.IsDeleted == False,
+                )
             )
             dispenses = list(disp_rows.scalars().all())
             med.total_rx_count = len(dispenses)
             med.total_price = sum((d.price or Decimal("0")) for d in dispenses) or None
             med.total_ins_paid = sum((d.ins_paid or Decimal("0")) for d in dispenses) or None
 
-        report_ids = {m.report_id for m in medicine_map.values()}
+        # Recalculate DrugReport grand totals
+        report_ids = {med.report_id for med in medicine_map.values()}
         for report_id in report_ids:
             report_res = await db.execute(select(DrugReport).where(DrugReport.id == report_id))
             report = report_res.scalar_one()
@@ -834,24 +672,27 @@ async def patch_dispenses_from_document(
             db,
             medical_store_id=body.medical_store_id,
             actor=user,
-            action="DISPENSE_DOCUMENT_PATCHED",
+            action="DISPENSE_PATCHED",
             entity_type="dispense",
             entity_id=None,
-            summary=f"Patched {patched_count} dispense(s) via document upload",
-            search_blob=build_search_blob(*existing_map.keys()),
-            error_count=validation.summary.errors if forced else 0,
+            summary=f"Patched {patched_count} dispense(s) via JSON validation",
+            search_blob=build_search_blob(*(d.rx_no for d in body.medicines for d in d.dispenses if d.rx_no)),
         )
         await db.commit()
     except SQLAlchemyError as exc:
         await db.rollback()
-        logger.exception("Failed to patch dispenses from document: {err}", err=exc)
+        logger.exception("Failed to patch dispenses: {err}", err=exc)
         raise
 
-    logger.info("Dispense document patched: ms_id={ph} count={n}", ph=body.medical_store_id, n=patched_count)
+    logger.info(
+        "Dispenses patched: ms_id={ph} count={n}",
+        ph=body.medical_store_id,
+        n=patched_count,
+    )
 
     return success_response(
         DispenseSaveResponse(
-            report_id=list(report_ids)[0] if report_ids else 0,
+            report_id=list(report_ids)[0] if report_ids else 0, # Return arbitrary report_id since patch crosses reports
             medical_store_id=body.medical_store_id,
             medicines_saved=len(filtered_body.medicines),
             dispenses_saved=patched_count,
@@ -860,6 +701,83 @@ async def patch_dispenses_from_document(
             inventory_updates=[InventoryUpdate(**u) for u in inventory_updates],
             validation=validation,
         ),
-        "Dispenses successfully patched from document",
+        "Dispenses patched successfully",
+        status_code=200,
+    )
+
+
+@router.patch(
+    "/dispenses/document",
+    response_model=Response_Schema,
+    status_code=status.HTTP_200_OK,
+    summary="Extract JSON for a dispense patch from document and run Tier-1 (No DB write)",
+)
+async def patch_dispenses_from_document(
+    medical_store_id: int = Form(..., description="Medical store the doc belongs to"),
+    file: UploadFile = File(..., description="The corrected dispense document (PDF/Excel)"),
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    await ensure_pharmacy_access(db, user, medical_store_id)
+    sub = await ensure_feature(db, medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
+
+    import asyncio
+    from services.document_extractor import extract_report_from_file
+    from fastapi import UploadFile
+
+    file_bytes = await file.read()
+    filename = file.filename or "unknown"
+    
+    # 1. Extract JSON from the file synchronously
+    report_data = await asyncio.to_thread(extract_report_from_file, file_bytes, filename)
+    report_data["medical_store_id"] = medical_store_id
+    
+    # Validate against our schema to ensure structural correctness (Pydantic will coerce numbers now)
+    body = DispenseSaveRequest(**report_data)
+
+    # 2. Collect all rx_no from the incoming document
+    incoming_rx_nos = [
+        d.rx_no
+        for med in body.medicines
+        for d in med.dispenses
+        if d.rx_no
+    ]
+    if not incoming_rx_nos:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No rx_no values found in the provided document."
+        )
+
+    # 3. Find which ones actually exist in the DB for this pharmacy
+    rows = await db.execute(
+        select(Dispense).where(
+            Dispense.medical_store_id == medical_store_id,
+            Dispense.rx_no.in_(incoming_rx_nos),
+            Dispense.IsDeleted == False,
+        )
+    )
+    existing_map: dict[str, Dispense] = {}
+    for disp in rows.scalars().all():
+        existing_map[disp.rx_no] = disp
+
+    if not existing_map:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="None of the rx_no values in the document exist in the database for this pharmacy."
+        )
+
+    # 4. Filter the report data so validation ONLY runs on matched rx_nos
+    report_data_dump = body.model_dump(mode="json")
+    filtered_report_data = _filter_report_for_patch(report_data_dump, set(existing_map.keys()))
+
+    # 5. Run Tier 1 validation only (matching POST /documents/process worker logic)
+    granted = set(sub.plan.features or []) if sub.plan is not None else None
+    tier1 = validate_tier1(filtered_report_data, granted=granted)
+    
+    filtered_report_data["validation"] = tier1.model_dump(mode="json")
+
+    return success_response(
+        filtered_report_data,
+        "Document extracted and Tier-1 validation complete. Submit to PATCH /dispenses to save.",
         status_code=200,
     )

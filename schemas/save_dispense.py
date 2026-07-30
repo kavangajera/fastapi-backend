@@ -29,28 +29,28 @@ class DispensePharmacyMeta(BaseModel):
 
 
 class DispenseGrandTotal(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
     total_rx_count: str | int | None = None
-    total_price: str | None = None
-    total_cost: str | None = None
+    total_price: str | float | None = None
+    total_cost: str | float | None = None
 
 
 class DispenseLineInput(AuditInputFields):
-    model_config = ConfigDict(extra="forbid")
-    qty_disp: str | None = None
-    qty_ord: str | None = None
-    days_supply: str | int | None = None
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
+    qty_disp: str | float | None = None
+    qty_ord: str | float | None = None
+    days_supply: str | int | float | None = None
     date_filled: str | None = None
     rx_no: str | None = None
-    ref: str | None = None
+    ref: str | int | None = None
     pat_name: str | None = None
     pat_addr: str | None = None
     pat_phone: str | None = None
     pres_name: str | None = None
     pres_addr: str | None = None
     pres_phone: str | None = None
-    price: str | None = None
-    ins_paid: str | None = None
+    price: str | float | None = None
+    ins_paid: str | float | None = None
     ins_code: str | None = None
     # Extractor echoes these from the medicine row onto each dispense
     # entry; we accept-but-ignore them so the raw JSON round-trips.
@@ -59,12 +59,12 @@ class DispenseLineInput(AuditInputFields):
 
 
 class MedicineTotalsInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    packs: str | None = None
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
+    packs: str | float | None = None
     total_rx_count: str | int | None = None
-    total_ins_paid: str | None = None
-    total_price: str | None = None
-    total_cost: str | None = None
+    total_ins_paid: str | float | None = None
+    total_price: str | float | None = None
+    total_cost: str | float | None = None
 
 
 class MedicineInput(AuditInputFields):
@@ -99,21 +99,21 @@ class DispenseSaveRequest(AuditInputFields):
 
 class DispensePatchLineInput(BaseModel):
     """A single dispense line to patch — rx_no is the lookup key."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", coerce_numbers_to_str=True)
     rx_no: str
-    qty_disp: str | None = None
-    qty_ord: str | None = None
-    days_supply: str | int | None = None
+    qty_disp: str | float | None = None
+    qty_ord: str | float | None = None
+    days_supply: str | int | float | None = None
     date_filled: str | None = None
-    ref: str | None = None
+    ref: str | int | None = None
     pat_name: str | None = None
     pat_addr: str | None = None
     pat_phone: str | None = None
     pres_name: str | None = None
     pres_addr: str | None = None
     pres_phone: str | None = None
-    price: str | None = None
-    ins_paid: str | None = None
+    price: str | float | None = None
+    ins_paid: str | float | None = None
     ins_code: str | None = None
 
 

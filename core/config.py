@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODEL: str = "qwen/qwen3-vl-8b"
+    GOTENBERG_URL: str = "http://localhost:3000"
     INVOICE_MAX_FILES: int = 10
     INVOICE_MAX_PAGES: int = 15
     BARCODE_MAX_FILES: int = 50

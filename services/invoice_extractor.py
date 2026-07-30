@@ -31,7 +31,6 @@ from pathlib import Path
 
 import fitz
 from langchain_core.messages import HumanMessage, SystemMessage
-from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 from loguru import logger
 from PIL import Image
@@ -196,25 +195,6 @@ USER_PROMPT = (
 )
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Provider settings (env-driven)
-# ─────────────────────────────────────────────────────────────────────────────
-
-
-def _env(name: str, default: str) -> str:
-    return os.getenv(name, default)
-
-
-def _active_provider_model(
-    default_model: str,
-    provider: str | None = None,
-    openrouter_model: str | None = None,
-) -> tuple[str, str]:
-    resolved_provider = (provider or _env("PROVIDER", "ollama")).lower()
-    if resolved_provider == "openrouter":
-        model = openrouter_model or _env("OPENROUTER_MODEL", "qwen/qwen2.5-vl-72b")
-        return "openrouter", (model or default_model)
-    return "ollama", default_model
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -306,44 +286,31 @@ def call_llm_single_page(
     Soft-fails (returns {}) on empty response or bad JSON
     so one bad page doesn't crash the whole run.
     """
-    provider, model_used = _active_provider_model(
-        model,
-        provider=provider,
-        openrouter_model=openrouter_model,
+    api_key = openrouter_api_key or os.getenv("OPENROUTER_API_KEY", "")
+    base_url = openrouter_base_url or os.getenv(
+        "OPENROUTER_BASE_URL",
+        "https://openrouter.ai/api/v1",
     )
+    if not api_key:
+        logger.error("OPENROUTER_API_KEY is missing")
+        return {}
+        
     logger.info(
-        f"Page {page_num}/{total_pages} → {provider}:{model_used} "
+        f"Page {page_num}/{total_pages} → openrouter:{openrouter_model or model} "
         f"(image: {page.size[0]}x{page.size[1]}px)"
     )
 
-    if provider == "openrouter":
-        api_key = openrouter_api_key or _env("OPENROUTER_API_KEY", "")
-        base_url = openrouter_base_url or _env(
-            "OPENROUTER_BASE_URL",
-            "https://openrouter.ai/api/v1",
-        )
-        if not api_key:
-            logger.error("OpenRouter selected but OPENROUTER_API_KEY is missing")
-            return {}
-        llm = ChatOpenAI(
-            model=openrouter_model or model,
-            api_key=api_key,
-            base_url=base_url,
-            temperature=temperature,
-            max_tokens=4096,
-            default_headers={
-                "HTTP-Referer": "http://localhost",
-                "X-Title": "fastapi-backend-invoice-extractor",
-            },
-        )
-    else:
-        llm = ChatOllama(
-            model=model,
-            base_url=ollama_url,
-            temperature=temperature,
-            format="json",  # enforce JSON mode — no markdown fences
-            num_predict=4096,  # plenty for one page; keeps latency down
-        )
+    llm = ChatOpenAI(
+        model=openrouter_model or model,
+        api_key=api_key,
+        base_url=base_url,
+        temperature=temperature,
+        max_tokens=4096,
+        default_headers={
+            "HTTP-Referer": "http://localhost",
+            "X-Title": "fastapi-backend-invoice-extractor",
+        },
+    )
 
     content = [
         {
@@ -363,7 +330,7 @@ def call_llm_single_page(
     ]
 
     try:
-        response = llm.invoke(messages)
+        response = llm.bind(response_format={"type": "json_object"}).invoke(messages)
     except Exception as exc:
         logger.error(f"Page {page_num}: LLM call failed — {exc}")
         return {}
@@ -492,13 +459,8 @@ def call_llm(
     Send each page individually and merge results.
     Safe for any model size — no context overload.
     """
-    provider, model_used = _active_provider_model(
-        model,
-        provider=provider,
-        openrouter_model=openrouter_model,
-    )
     logger.info(
-        f"Chunked extraction: {len(pages)} page(s) × 1 image/call → {provider}:{model_used}"
+        f"Chunked extraction: {len(pages)} page(s) × 1 image/call → openrouter:{openrouter_model or model}"
     )
 
     pages_data: list[dict] = []
@@ -604,16 +566,7 @@ class InvoiceParser:
         self.openrouter_base_url = openrouter_base_url
         self.openrouter_model = openrouter_model
 
-        provider, model_used = _active_provider_model(
-            model,
-            provider=provider,
-            openrouter_model=openrouter_model,
-        )
-        provider_details = (
-            f"provider={provider} | model={model_used}"
-            if provider == "openrouter"
-            else f"provider={provider} | model={model_used} | ollama_url={ollama_url}"
-        )
+        provider_details = f"openrouter:{self.openrouter_model or self.model}"
         logger.info(
             f"InvoiceParser ready | {provider_details} | "
             f"dpi={dpi_scale} | max_dim={max_dim} | chunked=True (1 page/call)"
