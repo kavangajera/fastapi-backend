@@ -2,28 +2,32 @@
 core/rate_limit.py
 ──────────────────
 A small in-process sliding-window limiter for the unauthenticated auth
-endpoints.
+endpoints, keyed on **the email address being acted upon** — never on the
+caller's IP.
 
-Why it exists: signup answers "is this email already registered?" with a
-409, which is friendlier than a generic response but also makes the
-endpoint an oracle. Capping how many times one caller may ask — and how
-much mail one address can be made to generate — is what keeps that answer
-from being harvestable in bulk.
+Why not per-IP: a pharmacy counter, an office, a shared WiFi network or a
+mobile carrier behind CGNAT all present one address for many people. An
+IP budget makes those users throttle each other — one owner registering
+their second pharmacy would lock out the colleague signing up beside
+them. Keying on the email means a caller's budget follows the account
+they are actually trying to create, so no two applicants can collide.
+
+What this buys, and what it does not: it bounds how often a *single*
+address can be probed or mailed, which caps how much mail one mailbox can
+be made to receive and stops the 409 "already registered" answer being
+re-asked in a loop for the same address. It does **not** bound a caller
+who walks a list of many addresses — every new address starts with a full
+budget. Enumeration across addresses has to be stopped at the edge
+(nginx / Cloudflare / API gateway), which is where connection-level and
+per-source limits belong anyway.
 
 Scope, stated plainly: the window lives in **this process's memory**. With
 N API instances behind a load balancer the effective allowance is N × the
 limit, and a restart clears it. That is a deliberate trade — it costs
-nothing and needs no Redis — and it is enough to stop a single client
-hammering the endpoint. It is not a defence against a distributed
-attacker; put a real limiter at the edge (nginx / Cloudflare / API
-gateway) if you need that.
-
-`X-Forwarded-For` is deliberately **not** consulted: the header is
-attacker-controlled unless a trusted proxy rewrites it, and honouring it
-blindly would make the limiter bypassable by anyone who can set a header.
-If this app is ever fronted by a proxy you control, run uvicorn with
-`--proxy-headers --forwarded-allow-ips=<proxy ip>` — Starlette then
-rewrites `request.client` itself and this module needs no change.
+nothing and needs no Redis. Note that the durable half of the protection
+does not have this weakness: the cooldown and total-send caps in
+`services/signup_service.py` live on the `pending_signup` row, so they
+hold across instances and restarts regardless.
 """
 
 from __future__ import annotations
@@ -31,13 +35,13 @@ from __future__ import annotations
 import time
 from collections import deque
 
-from fastapi import HTTPException, Request
+from fastapi import HTTPException
 
 # key → timestamps (monotonic seconds) of the hits still inside the window.
 _BUCKETS: dict[str, deque[float]] = {}
 
 # Housekeeping: drop emptied buckets once the table grows past this, so a
-# long-lived process does not accumulate one entry per IP ever seen.
+# long-lived process does not accumulate one entry per address ever seen.
 _SWEEP_THRESHOLD = 4096
 
 
@@ -46,10 +50,14 @@ def _sweep(now: float, window_seconds: int) -> None:
         _BUCKETS.pop(key, None)
 
 
-def client_key(request: Request, scope: str) -> str:
-    """Limiter key for a request: the peer IP, namespaced by `scope`."""
-    host = request.client.host if request.client else "unknown"
-    return f"{scope}:{host}"
+def subject_key(subject: str, scope: str) -> str:
+    """Limiter key for one subject (an email address), namespaced by `scope`.
+
+    Case- and whitespace-folded so `Foo@x.com ` and `foo@x.com` share a
+    bucket. Callers pass an already-normalized address; this is belt and
+    braces so a missed validator cannot hand out a second free budget.
+    """
+    return f"{scope}:{subject.strip().lower()}"
 
 
 def enforce(
