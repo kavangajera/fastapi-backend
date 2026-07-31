@@ -1,11 +1,17 @@
+OPENROUTER_API_KEY=your_openrouter_api_key
+OPENROUTER_MODEL=google/gemini-2.5-flash
+GOTENBERG_URL=http://localhost:3000
+
 # FastAPI Backend - Queue RX
 
 A production-ready FastAPI backend with SQLAlchemy ORM, Alembic migrations, and PostgreSQL database support.
 
 ## Clone this repo :-
+
 ```
 git clone ...repo.git
 ```
+
 asks for username:
 password:
 For password visit https://gist.github.com/kavangajera/ed0a632c27f6076e9854c6231ebe2b8a
@@ -269,7 +275,8 @@ from .doctor_availability import DoctorAvailability
 from .password_reset_token import PasswordResetToken
 ```
 
-**Why this matters**: 
+**Why this matters**:
+
 - Alembic imports `from models import *` to detect all models
 - Provides clean imports: `from models import User, Doctor`
 - Single source of truth for all models
@@ -344,7 +351,7 @@ async def register_user(
 ):
     """
     Create a new user account.
-    
+
     - **email**: Valid email address
     - **password**: Minimum 8 characters
     - **name**: Full name
@@ -399,7 +406,7 @@ class UserResponse(UserBase):
     id: int
     created_at: datetime
     is_active: bool
-    
+
     class Config:
         from_attributes = True  # Enables ORM mode (formerly orm_mode)
 
@@ -461,11 +468,11 @@ class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         # Process request
         token = request.headers.get("Authorization")
-        
+
         # Add custom logic
         if not token and request.url.path.startswith("/api/protected"):
             raise HTTPException(status_code=401, detail="Unauthorized")
-        
+
         response = await call_next(request)
         return response
 ```
@@ -615,7 +622,7 @@ router = APIRouter(
 async def create_appointment(...):
     """
     Create a new appointment:
-    
+
     - **doctor_id**: ID of the doctor
     - **slot_id**: Available time slot
     - **notes**: Optional appointment notes
@@ -648,7 +655,7 @@ class AppointmentCreate(BaseModel):
     doctor_id: int = Field(..., example=1)
     slot_id: int = Field(..., example=5)
     notes: Optional[str] = Field(None, example="First consultation")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -714,7 +721,7 @@ async def get_user(user_id: int, db: Session = Depends(get_db)):
 class Settings(BaseSettings):
     ENV: str = "development"
     DEBUG: bool = False
-    
+
     @property
     def is_production(self) -> bool:
         return self.ENV == "production"
@@ -820,7 +827,8 @@ from models import *  # Must import all models
 
 **Problem**: `sqlalchemy.exc.OperationalError`
 
-**Solution**: 
+**Solution**:
+
 - Check `DATABASE_URL` in `.env`
 - Ensure PostgreSQL is running
 - Verify database exists
@@ -830,6 +838,7 @@ from models import *  # Must import all models
 **Problem**: `Address already in use`
 
 **Solution**:
+
 ```bash
 lsof -i :8000
 kill -9 <PID>
@@ -856,5 +865,6 @@ kill -9 <PID>
 [Your License Here]
 
 ## Contributors
+
 -kavangajera
 -Devarshi2285
