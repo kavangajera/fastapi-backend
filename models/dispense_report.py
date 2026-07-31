@@ -48,10 +48,15 @@ class DrugReport(AuditMixin, Base):
     report_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
     report_from_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
     report_to_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    pharmacy_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    pharmacy_address: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pharmacy_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    pharmacy_fax: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     grand_total_rx_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     grand_total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     grand_total_cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    grand_total_ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
     # Set when the owner force-saves past blocking validation errors. The
     # full blocking-alert list is stashed in `validation_errors` so the
@@ -89,8 +94,17 @@ class Medicine(AuditMixin, Base):
     ndc: Mapped[str] = mapped_column(String(11), nullable=False, index=True)
     inventory_bucket: Mapped[str | None] = mapped_column(String(100), nullable=True)
     lot_no_exp_date: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    lot_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    expiration_date: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    pack_size: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    manufacturer: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    generic_indicator: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    strength: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    daw_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    drug_schedule: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
     total_packs: Mapped[Decimal | None] = mapped_column(Numeric(10, 3), nullable=True)
+    total_quantity_dispensed: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
     total_rx_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     total_ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
@@ -137,18 +151,34 @@ class Dispense(AuditMixin, Base):
 
     rx_no: Mapped[str | None] = mapped_column(String(20), nullable=True, index=True)
     ref: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    reference_number: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     pat_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     pat_addr: Mapped[str | None] = mapped_column(Text, nullable=True)
     pat_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    patient_dob: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    patient_gender: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    patient_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     pres_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
     pres_addr: Mapped[str | None] = mapped_column(Text, nullable=True)
     pres_phone: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    prescriber_dea: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    prescriber_npi: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+    date_written: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    date_sold: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    will_call_date: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     ins_paid: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     ins_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    patient_copay: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    cash_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    total_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    source_page: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_partial: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    extraction_warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("medical_store_id", "rx_no", name="uq_dispenses_store_rx_no"),

@@ -1,4 +1,4 @@
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
 
@@ -10,11 +10,14 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
-    INVOICE_PROVIDER: str = Field(default="openrouter", validation_alias="PROVIDER")
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    OPENROUTER_MODEL: str = "qwen/qwen3-vl-8b"
+    OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
     GOTENBERG_URL: str = "http://localhost:3000"
+    DOCUMENT_LLM_RENDER_DPI: int = 300
+    DOCUMENT_LLM_MAX_CONCURRENCY: int = 3
+    DOCUMENT_LLM_TIMEOUT_SECONDS: int = 120
+    DOCUMENT_LLM_MAX_OUTPUT_TOKENS: int = 3500
     INVOICE_MAX_FILES: int = 10
     INVOICE_MAX_PAGES: int = 15
     BARCODE_MAX_FILES: int = 50

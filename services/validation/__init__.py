@@ -12,7 +12,19 @@ Public entry points:
                                                        alerts A/B/C
 """
 
-from services.validation.tier1 import validate_tier1
-from services.validation.tier2 import validate_tier2
+from typing import Any
+
+
+def validate_tier1(*args: Any, **kwargs: Any):
+    from services.validation.tier1 import validate_tier1 as implementation
+
+    return implementation(*args, **kwargs)
+
+
+async def validate_tier2(*args: Any, **kwargs: Any):
+    from services.validation.tier2 import validate_tier2 as implementation
+
+    return await implementation(*args, **kwargs)
+
 
 __all__ = ["validate_tier1", "validate_tier2"]

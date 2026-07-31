@@ -47,7 +47,7 @@ _NDC_RE = re.compile(r"\b(\d{11})\b")
 _DATE_RE = re.compile(r"\d{2}/\d{2}/\d{4}")
 _MONEY_RE = re.compile(r"\$\s*[\d,]+\.?\d*")
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[ \-]?\d{3}[ \-]?\d{4}")
-_PAT_NAME_RE = re.compile(r"([A-Z][A-Za-z'\-]+,\s*[A-Za-z'\-]+)")
+_PAT_NAME_RE = re.compile(r"([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)*,\s*[A-Za-z'\-]+)")
 _STATE_ZIP_RE = re.compile(r"\b([A-Z]{2})\s+(\d{5}(?:\-\d{4})?)\b")
 _ADDR_KW_RE = re.compile(
     r"\b(AVE|BLVD|ST|RD|LN|DR|APT|FL|FLOOR|WAY|COURT|CT|PLACE|PL)\b", re.IGNORECASE
@@ -528,7 +528,10 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
         # Initial drug name from this line
         left = ln[: ndc_m.start()].strip()
         pats = list(_PAT_NAME_RE.finditer(left))
-        drug_part = left[pats[-1].end() :].strip() if pats else left
+        # The first comma-name is the patient. Drug names can also contain a
+        # comma (for example "SACUBITRIL, VALSARTAN") and must not be treated
+        # as another patient marker.
+        drug_part = left[pats[0].end() :].strip() if pats else left
         drug_name = re.sub(r"\s{2,}", " ", drug_part).strip()
 
         # Some PDFs put "Pat Name + Drug Name" on the previous line
@@ -563,8 +566,10 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
                     bucket_override = candidate
                 break
 
-        # Look ahead for multi-line drug name continuation
-        for j in range(i + 1, min(i + 5, len(lines))):
+        # Only recover a name from following blocks when the detail block did
+        # not contain one. Otherwise addresses and a repeated page header can
+        # be appended to a perfectly valid medicine name at page boundaries.
+        for j in range(i + 1, min(i + 5, len(lines))) if not drug_name else ():
             l2 = lines[j]
             if _is_detail_row(l2) or _is_totals_boundary(l2):
                 break
@@ -606,9 +611,18 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
             ordered_keys.append((dn, ndc))
 
     medicines: list[dict[str, Any]] = []
-    for drug_name, ndc in ordered_keys:
+    for medicine_index, (drug_name, ndc) in enumerate(ordered_keys):
         t = totals_by_ndc.get(ndc, {})
         dispenses = dispenses_by_key.get((drug_name, ndc), [])
+        is_trailing_partial = not t and medicine_index == len(ordered_keys) - 1
+        for dispense in dispenses:
+            dispense["source_page"] = None
+            dispense["is_partial"] = is_trailing_partial
+            dispense["warnings"] = (
+                ["Detail row continues beyond the supplied final page."]
+                if is_trailing_partial
+                else []
+            )
         inv_bucket = next(
             (d.get("inventory_bucket") for d in dispenses if d.get("inventory_bucket")),
             None,

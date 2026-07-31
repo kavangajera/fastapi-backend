@@ -1,6 +1,4 @@
 import json
-
-import json
 from time import perf_counter
 
 import stripe
@@ -18,6 +16,7 @@ from services.stripe_service import (
 )
 
 router = APIRouter(prefix="/webhooks/stripe", tags=["Webhooks"])
+
 
 async def process_stripe_event(event_type: str, data: dict):
     """Run webhook handling in the background with its own DB session."""
@@ -72,13 +71,14 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
         )
 
     if not settings.STRIPE_WEBHOOK_SECRET:
-        logger.error("[CP-3a] STRIPE_WEBHOOK_SECRET is EMPTY — signature verification will fail +{t}ms", t=ms())
+        logger.error(
+            "[CP-3a] STRIPE_WEBHOOK_SECRET is EMPTY — signature verification will fail +{t}ms",
+            t=ms(),
+        )
 
     logger.info("[CP-3] verifying signature… +{t}ms", t=ms())
     try:
-        stripe.Webhook.construct_event(
-            payload, sig_header, settings.STRIPE_WEBHOOK_SECRET
-        )
+        stripe.Webhook.construct_event(payload, sig_header, settings.STRIPE_WEBHOOK_SECRET)
     except ValueError as exc:
         logger.error("[CP-3b] invalid payload: {err} +{t}ms", err=exc, t=ms())
         raise HTTPException(status_code=400, detail="Invalid payload") from exc

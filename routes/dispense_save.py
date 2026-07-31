@@ -16,23 +16,33 @@ Validation gate:
 from __future__ import annotations
 
 from decimal import Decimal
-from fastapi import APIRouter, Depends, HTTPException, status, File, Form, UploadFile
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
-from core.enums import Feature
+from core.config import settings
+from core.enums import DocumentStatus, Feature, ProcessType
 from middlewares.auth import auth_incoming_req
 from models import Dispense, DrugReport, Medicine
 from schemas.response_schema import Response_Schema, success_response
-from schemas.save_dispense import DispenseSaveRequest, DispenseSaveResponse, DispensePatchRequest, DispensePatchLineInput
+from schemas.save_dispense import (
+    DispenseSaveRequest,
+    DispenseSaveResponse,
+)
 from schemas.save_invoice import InventoryUpdate
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.activity_service import build_search_blob, log_activity
+from services.document_queue import enqueue_document
 from services.feature_gate import ensure_feature, within_limit
-from services.inventory_service import reverse_dispense_quantities, subtract_dispense_quantities, reverse_single_dispense_qty
+from services.inventory_service import (
+    reverse_dispense_quantities,
+    reverse_single_dispense_qty,
+    subtract_dispense_quantities,
+)
 from services.pharmacy_authz import ensure_pharmacy_access
 from services.record_id_service import stamp_on_create
 from services.report_service import _build_dispense, _to_decimal, _to_int
@@ -57,20 +67,18 @@ def _filter_report_for_patch(report_data: dict, existing_rx_nos: set[str]) -> di
     rx_no is in `existing_rx_nos`. Drops any medicines that become empty.
     """
     import copy
+
     filtered = copy.deepcopy(report_data)
     medicines = filtered.get("medicines", [])
-    
+
     kept_medicines = []
     for med in medicines:
         dispenses = med.get("dispenses", [])
-        kept_dispenses = [
-            d for d in dispenses
-            if d.get("rx_no") in existing_rx_nos
-        ]
+        kept_dispenses = [d for d in dispenses if d.get("rx_no") in existing_rx_nos]
         if kept_dispenses:
             med["dispenses"] = kept_dispenses
             kept_medicines.append(med)
-            
+
     filtered["medicines"] = kept_medicines
     return filtered
 
@@ -147,18 +155,13 @@ async def save_dispense_report(
     errors_by_med = _alerts_by_medicine(validation) if forced else {}
 
     # ── Duplicate rx_no detection ───────────────────────────────────
-    incoming_rx_nos = [
-        d.rx_no
-        for med in body.medicines
-        for d in med.dispenses
-        if d.rx_no
-    ]
+    incoming_rx_nos = [d.rx_no for med in body.medicines for d in med.dispenses if d.rx_no]
     if incoming_rx_nos:
         existing = await db.execute(
             select(Dispense.rx_no).where(
                 Dispense.medical_store_id == body.medical_store_id,
                 Dispense.rx_no.in_(incoming_rx_nos),
-                Dispense.IsDeleted == False,
+                Dispense.IsDeleted.is_(False),
             )
         )
         dupes = [row[0] for row in existing.all()]
@@ -182,9 +185,14 @@ async def save_dispense_report(
         report_date=body.pharmacy.report_date,
         report_from_date=body.pharmacy.report_from_date,
         report_to_date=body.pharmacy.report_to_date,
+        pharmacy_name=body.pharmacy.pharmacy_name,
+        pharmacy_address=body.pharmacy.address,
+        pharmacy_phone=body.pharmacy.phone,
+        pharmacy_fax=body.pharmacy.fax,
         grand_total_rx_count=_to_int(body.grand_total.total_rx_count),
         grand_total_price=_to_decimal(body.grand_total.total_price),
         grand_total_cost=_to_decimal(body.grand_total.total_cost),
+        grand_total_ins_paid=_to_decimal(body.grand_total.total_ins_paid),
         force_saved=forced,
         error_count=validation.summary.errors if forced else 0,
         validation_errors=(
@@ -210,7 +218,18 @@ async def save_dispense_report(
             ndc=med_in.ndc,
             inventory_bucket=med_in.inventory_bucket,
             lot_no_exp_date=med_in.lot_no_exp_date,
+            lot_number=med_in.lot_number,
+            expiration_date=med_in.expiration_date,
+            pack_size=med_in.pack_size,
+            manufacturer=med_in.manufacturer,
+            generic_indicator=med_in.generic_indicator,
+            strength=med_in.strength,
+            daw_code=med_in.daw_code,
+            drug_schedule=med_in.drug_schedule,
             total_packs=_to_decimal(totals.packs) if totals else None,
+            total_quantity_dispensed=(
+                _to_decimal(totals.total_quantity_dispensed) if totals else None
+            ),
             total_rx_count=_to_int(totals.total_rx_count) if totals else None,
             total_ins_paid=_to_decimal(totals.total_ins_paid) if totals else None,
             total_price=_to_decimal(totals.total_price) if totals else None,
@@ -316,15 +335,13 @@ async def update_dispense_report(
     # ── Verify existing report ──────────────────────────────────────
     report_res = await db.execute(
         select(DrugReport).where(
-            DrugReport.id == report_id,
-            DrugReport.medical_store_id == body.medical_store_id
+            DrugReport.id == report_id, DrugReport.medical_store_id == body.medical_store_id
         )
     )
     existing_report = report_res.scalar_one_or_none()
     if not existing_report:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dispense report not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Dispense report not found"
         )
 
     # ── Plan quota gate: drugs reconciled per report ────────────────
@@ -380,11 +397,9 @@ async def update_dispense_report(
             medical_store_id=body.medical_store_id,
             drug_report_id=report_id,
         )
-        
+
         # 2. Delete old medicines (which cascades to dispenses)
-        await db.execute(
-            Medicine.__table__.delete().where(Medicine.report_id == report_id)
-        )
+        await db.execute(Medicine.__table__.delete().where(Medicine.report_id == report_id))
         await db.flush()
 
         # 3. Update report metadata
@@ -392,9 +407,14 @@ async def update_dispense_report(
         existing_report.report_date = body.pharmacy.report_date
         existing_report.report_from_date = body.pharmacy.report_from_date
         existing_report.report_to_date = body.pharmacy.report_to_date
+        existing_report.pharmacy_name = body.pharmacy.pharmacy_name
+        existing_report.pharmacy_address = body.pharmacy.address
+        existing_report.pharmacy_phone = body.pharmacy.phone
+        existing_report.pharmacy_fax = body.pharmacy.fax
         existing_report.grand_total_rx_count = _to_int(body.grand_total.total_rx_count)
         existing_report.grand_total_price = _to_decimal(body.grand_total.total_price)
         existing_report.grand_total_cost = _to_decimal(body.grand_total.total_cost)
+        existing_report.grand_total_ins_paid = _to_decimal(body.grand_total.total_ins_paid)
         existing_report.force_saved = forced
         existing_report.error_count = validation.summary.errors if forced else 0
         existing_report.validation_errors = (
@@ -417,7 +437,18 @@ async def update_dispense_report(
                 ndc=med_in.ndc,
                 inventory_bucket=med_in.inventory_bucket,
                 lot_no_exp_date=med_in.lot_no_exp_date,
+                lot_number=med_in.lot_number,
+                expiration_date=med_in.expiration_date,
+                pack_size=med_in.pack_size,
+                manufacturer=med_in.manufacturer,
+                generic_indicator=med_in.generic_indicator,
+                strength=med_in.strength,
+                daw_code=med_in.daw_code,
+                drug_schedule=med_in.drug_schedule,
                 total_packs=_to_decimal(totals.packs) if totals else None,
+                total_quantity_dispensed=(
+                    _to_decimal(totals.total_quantity_dispensed) if totals else None
+                ),
                 total_rx_count=_to_int(totals.total_rx_count) if totals else None,
                 total_ins_paid=_to_decimal(totals.total_ins_paid) if totals else None,
                 total_price=_to_decimal(totals.total_price) if totals else None,
@@ -524,16 +555,11 @@ async def patch_dispenses(
     sub = await ensure_feature(db, body.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
 
     # 1. Collect all rx_no from the incoming request
-    incoming_rx_nos = [
-        d.rx_no
-        for med in body.medicines
-        for d in med.dispenses
-        if d.rx_no
-    ]
+    incoming_rx_nos = [d.rx_no for med in body.medicines for d in med.dispenses if d.rx_no]
     if not incoming_rx_nos:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No rx_no values found in the provided document."
+            detail="No rx_no values found in the provided document.",
         )
 
     # 2. Find which ones actually exist in the DB for this pharmacy
@@ -541,7 +567,7 @@ async def patch_dispenses(
         select(Dispense).where(
             Dispense.medical_store_id == body.medical_store_id,
             Dispense.rx_no.in_(incoming_rx_nos),
-            Dispense.IsDeleted == False,
+            Dispense.IsDeleted.is_(False),
         )
     )
     existing_map: dict[str, Dispense] = {}
@@ -551,7 +577,7 @@ async def patch_dispenses(
     if not existing_map:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="None of the rx_no values in the document exist in the database for this pharmacy."
+            detail="None of the rx_no values in the document exist in the database for this pharmacy.",
         )
 
     # 3. Filter the report data so validation ONLY runs on matched rx_nos
@@ -597,12 +623,12 @@ async def patch_dispenses(
 
     try:
         filtered_body = DispenseSaveRequest.model_validate(filtered_report_data)
-        
+
         for idx, med_in in enumerate(filtered_body.medicines):
             med_errors = errors_by_med.get(idx)
             if med_errors:
                 medicines_with_errors += 1
-                
+
             for disp_in in med_in.dispenses:
                 db_disp = existing_map[disp_in.rx_no]
                 parent_med = medicine_map[db_disp.medicine_id]
@@ -623,7 +649,15 @@ async def patch_dispenses(
                 patch_data = disp_in.model_dump(exclude_unset=True, exclude={"rx_no"})
                 for field, value in patch_data.items():
                     if value is not None:
-                        if field in ("qty_disp", "qty_ord", "price", "ins_paid"):
+                        if field in (
+                            "qty_disp",
+                            "qty_ord",
+                            "price",
+                            "ins_paid",
+                            "patient_copay",
+                            "cash_price",
+                            "total_price",
+                        ):
                             setattr(db_disp, field, _to_decimal(value))
                         elif field == "days_supply":
                             setattr(db_disp, field, _to_int(value))
@@ -650,7 +684,7 @@ async def patch_dispenses(
             disp_rows = await db.execute(
                 select(Dispense).where(
                     Dispense.medicine_id == med_id,
-                    Dispense.IsDeleted == False,
+                    Dispense.IsDeleted.is_(False),
                 )
             )
             dispenses = list(disp_rows.scalars().all())
@@ -676,7 +710,9 @@ async def patch_dispenses(
             entity_type="dispense",
             entity_id=None,
             summary=f"Patched {patched_count} dispense(s) via JSON validation",
-            search_blob=build_search_blob(*(d.rx_no for d in body.medicines for d in d.dispenses if d.rx_no)),
+            search_blob=build_search_blob(
+                *(d.rx_no for d in body.medicines for d in d.dispenses if d.rx_no)
+            ),
         )
         await db.commit()
     except SQLAlchemyError as exc:
@@ -692,7 +728,9 @@ async def patch_dispenses(
 
     return success_response(
         DispenseSaveResponse(
-            report_id=list(report_ids)[0] if report_ids else 0, # Return arbitrary report_id since patch crosses reports
+            report_id=list(report_ids)[0]
+            if report_ids
+            else 0,  # Return arbitrary report_id since patch crosses reports
             medical_store_id=body.medical_store_id,
             medicines_saved=len(filtered_body.medicines),
             dispenses_saved=patched_count,
@@ -719,65 +757,50 @@ async def patch_dispenses_from_document(
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, medical_store_id)
-    sub = await ensure_feature(db, medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
-
-    import asyncio
-    from services.document_extractor import extract_report_from_file
-    from fastapi import UploadFile
-
+    await ensure_feature(db, medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
     file_bytes = await file.read()
-    filename = file.filename or "unknown"
-    
-    # 1. Extract JSON from the file synchronously
-    report_data = await asyncio.to_thread(extract_report_from_file, file_bytes, filename)
-    report_data["medical_store_id"] = medical_store_id
-    
-    # Validate against our schema to ensure structural correctness (Pydantic will coerce numbers now)
-    body = DispenseSaveRequest(**report_data)
-
-    # 2. Collect all rx_no from the incoming document
-    incoming_rx_nos = [
-        d.rx_no
-        for med in body.medicines
-        for d in med.dispenses
-        if d.rx_no
-    ]
-    if not incoming_rx_nos:
+    filename = file.filename or "document"
+    extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    if extension not in {"pdf", "doc", "docx", "xls", "xlsx"}:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No rx_no values found in the provided document."
+            detail="Unsupported dispense document format.",
         )
-
-    # 3. Find which ones actually exist in the DB for this pharmacy
-    rows = await db.execute(
-        select(Dispense).where(
-            Dispense.medical_store_id == medical_store_id,
-            Dispense.rx_no.in_(incoming_rx_nos),
-            Dispense.IsDeleted == False,
-        )
-    )
-    existing_map: dict[str, Dispense] = {}
-    for disp in rows.scalars().all():
-        existing_map[disp.rx_no] = disp
-
-    if not existing_map:
+    if len(file_bytes) > settings.DOCUMENT_MAX_FILE_SIZE_MB * 1024 * 1024:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="None of the rx_no values in the document exist in the database for this pharmacy."
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"Document exceeds {settings.DOCUMENT_MAX_FILE_SIZE_MB} MB.",
         )
-
-    # 4. Filter the report data so validation ONLY runs on matched rx_nos
-    report_data_dump = body.model_dump(mode="json")
-    filtered_report_data = _filter_report_for_patch(report_data_dump, set(existing_map.keys()))
-
-    # 5. Run Tier 1 validation only (matching POST /documents/process worker logic)
-    granted = set(sub.plan.features or []) if sub.plan is not None else None
-    tier1 = validate_tier1(filtered_report_data, granted=granted)
-    
-    filtered_report_data["validation"] = tier1.model_dump(mode="json")
-
+    try:
+        doc_key, result = await enqueue_document(
+            db,
+            file_bytes=file_bytes,
+            filename=filename,
+            extension=extension,
+            process_type=ProcessType.DISPENSE,
+            medical_store_id=medical_store_id,
+            uploaded_by_user_id=user.user_id,
+            progress={"request_mode": "patch"},
+        )
+    except Exception as exc:
+        logger.exception("Failed to queue patch document: {error}", error=exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Processing queue unavailable. Please retry.",
+        ) from exc
+    if result is None:
+        return success_response(
+            {"doc_key": doc_key, "status": DocumentStatus.QUEUED.value},
+            "Still processing. Poll GET /documents/{doc_key} for the result.",
+            status_code=202,
+        )
+    if result.status != DocumentStatus.COMPLETED.value:
+        raise HTTPException(
+            status_code=result.error_code or status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=result.error or "Document processing failed.",
+        )
     return success_response(
-        filtered_report_data,
+        result.result_data,
         "Document extracted and Tier-1 validation complete. Submit to PATCH /dispenses to save.",
         status_code=200,
     )

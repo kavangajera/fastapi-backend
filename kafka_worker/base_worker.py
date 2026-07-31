@@ -36,6 +36,7 @@ from core.enums import DocumentStatus, ProcessType
 from kafka_infra import topics
 from kafka_infra.messages import ProcessingJob, ProcessingResult
 from kafka_infra.producer import kafka_producer
+from kafka_worker.errors import PermanentDocumentError
 from kafka_worker.handlers import get_handler
 from models.document import Document
 
@@ -160,6 +161,21 @@ class Worker:
                     )
                 )
                 logger.info("Completed: doc_key={dk}", dk=job.doc_key)
+            except PermanentDocumentError as exc:
+                await session.rollback()
+                error_msg = f"{type(exc).__name__}: {exc}"
+                logger.warning(
+                    "Non-retryable document failure: doc_key={dk} error={err}",
+                    dk=job.doc_key,
+                    err=error_msg,
+                )
+                await self._handle_failure(
+                    session,
+                    job,
+                    error_msg,
+                    permanent=True,
+                    error_code=exc.status_code,
+                )
             except Exception as exc:
                 await session.rollback()
                 error_msg = f"{type(exc).__name__}: {exc}"
@@ -172,12 +188,18 @@ class Worker:
                 await self._handle_failure(session, job, error_msg)
 
     async def _handle_failure(
-        self, session: AsyncSession, job: ProcessingJob, error_msg: str
+        self,
+        session: AsyncSession,
+        job: ProcessingJob,
+        error_msg: str,
+        *,
+        permanent: bool = False,
+        error_code: int | None = None,
     ) -> None:
         result = await session.execute(select(Document).where(Document.doc_key == job.doc_key))
         doc = result.scalar_one_or_none()
 
-        if job.attempt < settings.DOCUMENT_MAX_RETRIES:
+        if not permanent and job.attempt < settings.DOCUMENT_MAX_RETRIES:
             delay = settings.KAFKA_RETRY_BACKOFF_BASE_SECONDS * (2 ** (job.attempt - 1))
             process_after = (datetime.now(timezone.utc) + timedelta(seconds=delay)).isoformat()
 
@@ -219,6 +241,7 @@ class Worker:
                     medical_store_id=job.medical_store_id,
                     status=DocumentStatus.FAILED_PERMANENTLY.value,
                     error=error_msg,
+                    error_code=error_code,
                     retry_count=job.attempt,
                 )
             )

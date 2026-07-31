@@ -15,21 +15,23 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from core.enums import ProcessType
-from kafka_worker.handlers.barcode_handler import handle_barcode
-from kafka_worker.handlers.dispense_handler import handle_dispense
-from kafka_worker.handlers.invoice_handler import handle_invoice
 
 HandlerFn = Callable[..., Awaitable[dict]]
 
-HANDLERS: dict[ProcessType, HandlerFn] = {
-    ProcessType.INVOICE: handle_invoice,
-    ProcessType.DISPENSE: handle_dispense,
-    ProcessType.BARCODE: handle_barcode,
-}
-
 
 def get_handler(process_type: ProcessType) -> HandlerFn:
-    handler = HANDLERS.get(process_type)
-    if handler is None:
-        raise ValueError(f"No handler registered for process type: {process_type}")
-    return handler
+    # Import only the selected worker's native dependencies. In particular,
+    # dispense and invoice workers must not require the system zbar DLL.
+    if process_type == ProcessType.DISPENSE:
+        from kafka_worker.handlers.dispense_handler import handle_dispense
+
+        return handle_dispense
+    if process_type == ProcessType.INVOICE:
+        from kafka_worker.handlers.invoice_handler import handle_invoice
+
+        return handle_invoice
+    if process_type == ProcessType.BARCODE:
+        from kafka_worker.handlers.barcode_handler import handle_barcode
+
+        return handle_barcode
+    raise ValueError(f"No handler registered for process type: {process_type}")

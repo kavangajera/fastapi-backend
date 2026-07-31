@@ -1,6 +1,6 @@
 import re
 
-with open("services/validation/tier2.py", "r") as f:
+with open("services/validation/tier2.py") as f:
     content = f.read()
 
 new_module_a = """
@@ -98,8 +98,16 @@ def _module_a(
             )
 """
 
-content = re.sub(r'def _module_a\(.*?def _module_b\(', new_module_a + '\n\ndef _module_b(', content, flags=re.DOTALL)
-content = content.replace('_module_a(mi, ndc, drug_name, cache_row, today, alerts)', '_module_a(mi, ndc, med, cache_row, today, alerts, strict_date_check=True)')
+content = re.sub(
+    r"def _module_a\(.*?def _module_b\(",
+    new_module_a + "\n\ndef _module_b(",
+    content,
+    flags=re.DOTALL,
+)
+content = content.replace(
+    "_module_a(mi, ndc, drug_name, cache_row, today, alerts)",
+    "_module_a(mi, ndc, med, cache_row, today, alerts, strict_date_check=True)",
+)
 
 with open("services/validation/tier2.py", "w") as f:
     f.write(content)

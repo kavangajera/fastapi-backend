@@ -57,5 +57,6 @@ class ProcessingResult(BaseModel):
     status: str  # DocumentStatus value: COMPLETED | FAILED_PERMANENTLY
     result_data: Any | None = None
     error: str | None = None
+    error_code: int | None = None
     retry_count: int = 0
     finished_at: str = Field(default_factory=_utcnow_iso)

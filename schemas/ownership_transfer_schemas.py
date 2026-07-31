@@ -18,7 +18,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from core.enums import OwnershipTransferStatus
 from schemas.password_reset_schemas import normalize_email
 
-
 # ================= INPUTS =================
 
 

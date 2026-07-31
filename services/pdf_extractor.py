@@ -39,7 +39,9 @@ from typing import Any
 
 from loguru import logger
 
-from services.dispense_llm_extractor import process_pdf
+from services.dispense_gemini_extractor import process_pdf
+from services.legacy_layout import validated_legacy_extract
+from services.legacy_pdf_extractor import extract_report as extract_legacy_report
 
 
 def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
@@ -47,10 +49,12 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
     Main entry point. Accepts raw PDF bytes, returns structured report dict using LLM extraction.
     """
     start_time = time.perf_counter()
-    logger.info("PDF extraction started (LLM mode)")
-    
-    result = process_pdf(pdf_bytes)
-    
+    logger.info("PDF extraction started")
+    result = validated_legacy_extract(extract_legacy_report, pdf_bytes)
+    if result is None:
+        logger.info("PDF selected Gemini vision extraction")
+        result = process_pdf(pdf_bytes)
+
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     logger.info(f"PDF extraction finished in {elapsed_ms:.1f} ms")
     return result

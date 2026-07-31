@@ -8,7 +8,6 @@ import fitz
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from core.config import settings
 from models import Invoice, InvoiceLineItem, InvoiceSummary
 from services.invoice_extractor import InvoiceParser
 from services.ndc_utils import digits_only, ndc10_to_ndc11_from_package_ndc
@@ -90,13 +89,7 @@ def extract_invoice_from_pdf(file_bytes: bytes, filename: str):
         tmp.write(file_bytes)
         tmp.flush()
 
-        parser = InvoiceParser(
-            model=settings.OPENROUTER_MODEL,
-            provider=settings.INVOICE_PROVIDER,
-            openrouter_api_key=settings.OPENROUTER_API_KEY,
-            openrouter_base_url=settings.OPENROUTER_BASE_URL,
-            openrouter_model=settings.OPENROUTER_MODEL,
-        )
+        parser = InvoiceParser()
         invoice_payload = parser.parse(tmp.name)
         _log_invoice_payload(invoice_payload)
         return invoice_payload

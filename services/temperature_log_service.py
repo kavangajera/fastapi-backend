@@ -20,9 +20,7 @@ from models import TemperatureLog
 from schemas.temperature_log import TemperatureLogCreateInput
 
 
-async def create_temperature_logs(
-    body: TemperatureLogCreateInput, db: AsyncSession
-) -> int:
+async def create_temperature_logs(body: TemperatureLogCreateInput, db: AsyncSession) -> int:
     """Insert one row per reading; return the number stored."""
     rows = [
         TemperatureLog(
@@ -40,7 +38,9 @@ async def create_temperature_logs(
     except SQLAlchemyError as exc:
         await db.rollback()
         logger.error("Failed to store temperature logs: {err}", err=str(exc))
-        raise HTTPException(status_code=500, detail="Failed to store temperature logs")
+        raise HTTPException(
+            status_code=500, detail="Failed to store temperature logs"
+        ) from exc
     return len(rows)
 
 

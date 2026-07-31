@@ -10,9 +10,10 @@ Usage:
     uv run python test_patch_dispense.py
 """
 
-import httpx
 import json
 import sys
+
+import httpx
 
 BASE_URL = "http://localhost:5001"
 
