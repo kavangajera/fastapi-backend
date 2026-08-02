@@ -1,17 +1,6 @@
 version: '3.8'
 
 services:
-  mysql:
-    image: mysql:8.0
-    container_name: queuerx-mysql
-    restart: always
-    environment:
-      MYSQL_ROOT_PASSWORD: root
-      MYSQL_DATABASE: queuerx
-    ports:
-      - "3307:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
 
   gotenberg:
     image: gotenberg/gotenberg:8
