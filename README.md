@@ -1,7 +1,3 @@
-OPENROUTER_API_KEY=your_openrouter_api_key
-OPENROUTER_MODEL=google/gemini-2.5-flash
-GOTENBERG_URL=http://localhost:3000
-
 # FastAPI Backend - Queue RX
 
 A production-ready FastAPI backend with SQLAlchemy ORM, Alembic migrations, and PostgreSQL database support.

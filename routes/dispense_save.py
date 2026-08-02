@@ -623,6 +623,14 @@ async def patch_dispenses(
 
     try:
         filtered_body = DispenseSaveRequest.model_validate(filtered_report_data)
+        patched_medicine_ids: set[int] = set()
+        # Snapshot each touched medicine's pre-edit NDC before any mutation —
+        # inventory reversal must always target the NDC the qty was actually
+        # subtracted from, even if this request also renames/re-NDCs the drug
+        # and even when a medicine has multiple matched dispenses in this batch.
+        old_ndc_by_medicine_id = {
+            mid: m.ndc for mid, m in medicine_map.items()
+        }
 
         for idx, med_in in enumerate(filtered_body.medicines):
             med_errors = errors_by_med.get(idx)
@@ -632,18 +640,44 @@ async def patch_dispenses(
             for disp_in in med_in.dispenses:
                 db_disp = existing_map[disp_in.rx_no]
                 parent_med = medicine_map[db_disp.medicine_id]
+                old_ndc = old_ndc_by_medicine_id[parent_med.id]
 
-                # Reverse old inventory
+                # Reverse old inventory (always against the pre-edit NDC)
                 if db_disp.qty_disp is not None:
                     rev = await reverse_single_dispense_qty(
                         db,
                         medical_store_id=body.medical_store_id,
-                        ndc=parent_med.ndc,
+                        ndc=old_ndc,
                         qty_disp=db_disp.qty_disp,
                         direction=1,
                     )
                     if rev:
                         inventory_updates.append(rev)
+
+                # Apply corrected medicine-level fields (drug_name/ndc are
+                # required on MedicineInput so they're always present; the
+                # rest are optional and only applied when sent). Every
+                # dispense under this medicine shares the same parent, so
+                # only do this once per medicine per request.
+                if parent_med.id not in patched_medicine_ids:
+                    patched_medicine_ids.add(parent_med.id)
+                    parent_med.drug_name = med_in.drug_name
+                    parent_med.ndc = med_in.ndc
+                    for field in (
+                        "inventory_bucket",
+                        "lot_no_exp_date",
+                        "lot_number",
+                        "expiration_date",
+                        "pack_size",
+                        "manufacturer",
+                        "generic_indicator",
+                        "strength",
+                        "daw_code",
+                        "drug_schedule",
+                    ):
+                        value = getattr(med_in, field, None)
+                        if value is not None:
+                            setattr(parent_med, field, value)
 
                 # Apply new fields
                 patch_data = disp_in.model_dump(exclude_unset=True, exclude={"rx_no"})
