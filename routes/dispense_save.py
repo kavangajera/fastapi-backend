@@ -45,7 +45,7 @@ from services.inventory_service import (
 )
 from services.pharmacy_authz import ensure_pharmacy_access
 from services.record_id_service import stamp_on_create
-from services.report_service import _build_dispense, _to_decimal, _to_int
+from services.report_service import _build_dispense, _to_decimal, _to_int, compute_medicine_totals
 from services.validation import validate_tier1, validate_tier2
 
 router = APIRouter(tags=["Dispense Reports"])
@@ -126,7 +126,7 @@ async def save_dispense_report(
 
     # ── Validation gate (micro-gated by the store's plan) ───────────
     report_data = body.model_dump(mode="json")
-    granted = set(sub.plan.features or []) if sub.plan is not None else None
+    granted = set(sub.plan.features or []) if sub and sub.plan else None
     tier1 = validate_tier1(report_data, granted=granted)
     validation = await validate_tier2(db, report_data, tier1_report=tier1, granted=granted)
 
@@ -212,6 +212,8 @@ async def save_dispense_report(
         med_errors = errors_by_med.get(idx)
         if med_errors:
             medicines_with_errors += 1
+        dispense_dicts = [d.model_dump() for d in med_in.dispenses]
+        computed = compute_medicine_totals(dispense_dicts)
         db_med = Medicine(
             report_id=db_report.id,
             drug_name=med_in.drug_name,
@@ -227,12 +229,10 @@ async def save_dispense_report(
             daw_code=med_in.daw_code,
             drug_schedule=med_in.drug_schedule,
             total_packs=_to_decimal(totals.packs) if totals else None,
-            total_quantity_dispensed=(
-                _to_decimal(totals.total_quantity_dispensed) if totals else None
-            ),
-            total_rx_count=_to_int(totals.total_rx_count) if totals else None,
-            total_ins_paid=_to_decimal(totals.total_ins_paid) if totals else None,
-            total_price=_to_decimal(totals.total_price) if totals else None,
+            total_quantity_dispensed=computed["total_quantity_dispensed"],
+            total_rx_count=computed["total_rx_count"],
+            total_ins_paid=computed["total_ins_paid"],
+            total_price=computed["total_price"],
             total_cost=_to_decimal(totals.total_cost) if totals else None,
             has_errors=bool(med_errors),
             validation_errors=med_errors,
@@ -241,8 +241,8 @@ async def save_dispense_report(
         db.add(db_med)
         await db.flush()
 
-        for disp_in in med_in.dispenses:
-            db_disp = _build_dispense(disp_in.model_dump(), db_med.id, body.medical_store_id)
+        for disp_dict in dispense_dicts:
+            db_disp = _build_dispense(disp_dict, db_med.id, body.medical_store_id)
             await stamp_on_create(db, db_disp, body.device_id)
             db.add(db_disp)
             total_dispenses += 1
@@ -431,6 +431,8 @@ async def update_dispense_report(
             med_errors = errors_by_med.get(idx)
             if med_errors:
                 medicines_with_errors += 1
+            dispense_dicts = [d.model_dump() for d in med_in.dispenses]
+            computed = compute_medicine_totals(dispense_dicts)
             db_med = Medicine(
                 report_id=existing_report.id,
                 drug_name=med_in.drug_name,
@@ -446,12 +448,10 @@ async def update_dispense_report(
                 daw_code=med_in.daw_code,
                 drug_schedule=med_in.drug_schedule,
                 total_packs=_to_decimal(totals.packs) if totals else None,
-                total_quantity_dispensed=(
-                    _to_decimal(totals.total_quantity_dispensed) if totals else None
-                ),
-                total_rx_count=_to_int(totals.total_rx_count) if totals else None,
-                total_ins_paid=_to_decimal(totals.total_ins_paid) if totals else None,
-                total_price=_to_decimal(totals.total_price) if totals else None,
+                total_quantity_dispensed=computed["total_quantity_dispensed"],
+                total_rx_count=computed["total_rx_count"],
+                total_ins_paid=computed["total_ins_paid"],
+                total_price=computed["total_price"],
                 total_cost=_to_decimal(totals.total_cost) if totals else None,
                 has_errors=bool(med_errors),
                 validation_errors=med_errors,
@@ -460,8 +460,8 @@ async def update_dispense_report(
             db.add(db_med)
             await db.flush()
 
-            for disp_in in med_in.dispenses:
-                db_disp = _build_dispense(disp_in.model_dump(), db_med.id, body.medical_store_id)
+            for disp_dict in dispense_dicts:
+                db_disp = _build_dispense(disp_dict, db_med.id, body.medical_store_id)
                 await stamp_on_create(db, db_disp, body.device_id)
                 db.add(db_disp)
                 total_dispenses += 1
@@ -723,6 +723,9 @@ async def patch_dispenses(
             )
             dispenses = list(disp_rows.scalars().all())
             med.total_rx_count = len(dispenses)
+            med.total_quantity_dispensed = (
+                sum((d.qty_disp or Decimal("0")) for d in dispenses) or None
+            )
             med.total_price = sum((d.price or Decimal("0")) for d in dispenses) or None
             med.total_ins_paid = sum((d.ins_paid or Decimal("0")) for d in dispenses) or None
 

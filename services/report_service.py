@@ -39,6 +39,33 @@ def _to_int(value: Any | None) -> int | None:
         return None
 
 
+def compute_medicine_totals(dispenses: list[dict[str, Any]]) -> dict[str, Any]:
+    """Derive a medicine's totals by summing its own `dispenses` rows.
+
+    The PDF/LLM-printed totals line is not trustworthy on its own (OCR
+    misses, multi-page NDC blocks that only capture the first page's
+    printed total, etc). A field missing on a given dispense is skipped
+    rather than treated as zero — if every dispense in the group lacks
+    that field, the summed total is None instead of 0.
+    """
+
+    def _sum(field: str) -> Decimal | None:
+        total: Decimal | None = None
+        for row in dispenses:
+            value = _to_decimal(row.get(field))
+            if value is None:
+                continue
+            total = value if total is None else total + value
+        return total
+
+    return {
+        "total_quantity_dispensed": _sum("qty_disp"),
+        "total_rx_count": len(dispenses) or None,
+        "total_ins_paid": _sum("ins_paid"),
+        "total_price": _sum("price"),
+    }
+
+
 def _build_dispense(disp_data: dict, medicine_id: int, medical_store_id: int) -> Dispense:
     return Dispense(
         medicine_id=medicine_id,
@@ -111,6 +138,8 @@ async def store_report(
     total_dispenses = 0
     for med_data in medicines:
         totals = med_data.get("totals", {})
+        dispenses = med_data.get("dispenses", [])
+        computed = compute_medicine_totals(dispenses)
         db_med = Medicine(
             report_id=db_report.id,
             drug_name=med_data["drug_name"],
@@ -126,16 +155,16 @@ async def store_report(
             daw_code=med_data.get("daw_code"),
             drug_schedule=med_data.get("drug_schedule"),
             total_packs=_to_decimal(totals.get("packs")),
-            total_quantity_dispensed=_to_decimal(totals.get("total_quantity_dispensed")),
-            total_rx_count=_to_int(totals.get("total_rx_count")),
-            total_ins_paid=_to_decimal(totals.get("total_ins_paid")),
-            total_price=_to_decimal(totals.get("total_price")),
+            total_quantity_dispensed=computed["total_quantity_dispensed"],
+            total_rx_count=computed["total_rx_count"],
+            total_ins_paid=computed["total_ins_paid"],
+            total_price=computed["total_price"],
             total_cost=_to_decimal(totals.get("total_cost")),
         )
         db.add(db_med)
         await db.flush()
 
-        for disp_data in med_data.get("dispenses", []):
+        for disp_data in dispenses:
             db.add(_build_dispense(disp_data, db_med.id, medical_store_id))
             total_dispenses += 1
 

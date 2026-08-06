@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -100,6 +101,13 @@ class InvoiceResponse(InvoiceBase, AuditFields):
     created_at: datetime
     line_items: list[InvoiceLineItemResponse] = []
     summary: InvoiceSummaryResponse | None = None
+
+
+class InvoiceResponseWrapped(InvoiceResponse):
+    """`InvoiceResponse` tagged for the discriminated union used by
+    `GET /invoices/`, which also surfaces pending Document placeholders."""
+
+    kind: Literal["invoice"] = "invoice"
 
 
 class InvoiceUploadSummary(BaseModel):

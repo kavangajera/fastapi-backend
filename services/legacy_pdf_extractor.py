@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import re
 import time
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import fitz  # PyMuPDF
@@ -47,7 +48,9 @@ _NDC_RE = re.compile(r"\b(\d{11})\b")
 _DATE_RE = re.compile(r"\d{2}/\d{2}/\d{4}")
 _MONEY_RE = re.compile(r"\$\s*[\d,]+\.?\d*")
 _PHONE_RE = re.compile(r"\(?\d{3}\)?[ \-]?\d{3}[ \-]?\d{4}")
-_PAT_NAME_RE = re.compile(r"([A-Z][A-Za-z'\-]+(?:\s+[A-Z][A-Za-z'\-]+)*,\s*[A-Za-z'\-]+)")
+_PAT_NAME_RE = re.compile(
+    r"([A-Z][A-Za-z'\-]*(?:\s+[A-Z][A-Za-z'\-]*)*\s*,\s*[A-Za-z'\-]+)"
+)
 _STATE_ZIP_RE = re.compile(r"\b([A-Z]{2})\s+(\d{5}(?:\-\d{4})?)\b")
 _ADDR_KW_RE = re.compile(
     r"\b(AVE|BLVD|ST|RD|LN|DR|APT|FL|FLOOR|WAY|COURT|CT|PLACE|PL)\b", re.IGNORECASE
@@ -69,6 +72,8 @@ _INS_CODE_RE = re.compile(
     re.IGNORECASE,
 )
 
+_MONEY_ONLY_RE = re.compile(r"^(?:\$\s*[\d,]+\.?\d*\s*){1,3}$")
+
 _SKIP_PREFIXES = (
     "----- Page",
     "Drug Dispensed Report",
@@ -82,6 +87,16 @@ _SKIP_PREFIXES = (
     "Total Price",
     "Total Cost",
 )
+
+# Recurring table-column-header fragments that show up as their own text
+# block on page breaks. Not full-line "starts with" prefixes like
+# _SKIP_PREFIXES, so matched by exact (stripped) equality instead.
+_COLUMN_HEADER_FRAGMENTS = {"Ins Paid"}
+
+
+def _is_skippable_fragment(ln: str) -> bool:
+    stripped = ln.strip()
+    return any(stripped.startswith(p) for p in _SKIP_PREFIXES) or stripped in _COLUMN_HEADER_FRAGMENTS
 
 
 # ─────────────────────────────── helpers ──────────────────────────────────────
@@ -121,6 +136,35 @@ def _split_addr_line(ln: str) -> tuple[str, str]:
         split_pos = matches[0].end()
         return ln[:split_pos].strip(), ln[split_pos:].strip()
     return ln.strip(), ""
+
+
+def _merge_wrapped_money_rows(lines: list[str]) -> list[str]:
+    """Fold a detail row's price/ins-paid values back onto its line.
+
+    When a row's patient + prescriber names are long enough to crowd the
+    line, PyMuPDF sometimes pushes the trailing money values into their own
+    text block. That leaves a line with an NDC + date but no money, which
+    fails `_is_detail_row` and silently drops the whole dispense. Detect
+    that shape (NDC + date, no money, immediately followed by a
+    money-only line) and merge the two lines before detail-row detection.
+    """
+    merged: list[str] = []
+    i = 0
+    while i < len(lines):
+        ln = lines[i]
+        if (
+            i + 1 < len(lines)
+            and _NDC_RE.search(ln)
+            and _DATE_RE.search(ln)
+            and not _MONEY_RE.search(ln)
+            and _MONEY_ONLY_RE.match(lines[i + 1].strip())
+        ):
+            merged.append(f"{ln} {lines[i + 1].strip()}")
+            i += 2
+            continue
+        merged.append(ln)
+        i += 1
+    return merged
 
 
 def _is_header_line(ln: str) -> bool:
@@ -375,8 +419,6 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
         if not ndc_m:
             continue
         ndc = ndc_m.group(1)
-        if ndc in totals:
-            continue
 
         rec: dict[str, str | None] = {
             "packs": None,
@@ -437,9 +479,29 @@ def _parse_totals_blocks(lines: list[str]) -> dict[str, dict[str, str | None]]:
                 if re.match(r"^\$\s*[\d,]+\.?\d*$", stripped):
                     prev_standalone_money = stripped
 
-        totals[ndc] = rec
+        # An NDC can print multiple "Total For:" blocks across the report
+        # (once per page/section it appears on) — accumulate rather than
+        # keep only the first, or the sum undercounts drugs dispensed on
+        # more than one page.
+        existing = totals.get(ndc)
+        if existing is None:
+            totals[ndc] = rec
+        else:
+            for key in ("packs", "total_ins_paid", "total_price", "total_cost", "total_rx_count"):
+                existing[key] = _add_str_num(existing[key], rec[key])
 
     return totals
+
+
+def _add_str_num(a: str | None, b: str | None) -> str | None:
+    if a is None and b is None:
+        return None
+    try:
+        da = Decimal(a) if a is not None else Decimal(0)
+        db = Decimal(b) if b is not None else Decimal(0)
+        return str(da + db)
+    except InvalidOperation:
+        return a if a is not None else b
 
 
 # ──────────────────────────── grand total ────────────────────────────────────
@@ -509,6 +571,7 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
 
     # Filter out header noise to handle page breaks cleanly
     lines = [ln for ln in lines if not _is_header_line(ln)]
+    lines = _merge_wrapped_money_rows(lines)
 
     # Collect detail rows
     detail_rows: list[tuple[int, str, str, str | None, str | None]] = []
@@ -545,6 +608,25 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
                 prev_drug = prev_line[prev_pat.end() :].strip()
                 if prev_drug:
                     drug_name = re.sub(r"\s{2,}", " ", prev_drug).strip()
+        elif (
+            not drug_name
+            and prev_line
+            and not _is_skippable_fragment(prev_line)
+            and not _is_detail_row(prev_line)
+            and not _is_totals_boundary(prev_line)
+            and not (
+                _DATE_RE.search(prev_line)
+                or _MONEY_RE.search(prev_line)
+                or _NDC_RE.search(prev_line)
+                or _PHONE_RE.search(prev_line)
+                or _STATE_ZIP_RE.search(prev_line)
+                or _ADDR_KW_RE.search(prev_line)
+            )
+        ):
+            # Previous line has no comma-shaped patient name (e.g. the
+            # patient name wasn't repeated for this row) but is still a
+            # plausible bare drug name — use it as-is.
+            drug_name = re.sub(r"\s{2,}", " ", prev_line).strip()
 
         # Inventory bucket is typically on a short line below the drug name
         for j in range(i + 1, min(i + 6, len(lines))):
@@ -572,6 +654,10 @@ def extract_report(pdf_bytes: bytes) -> dict[str, Any]:
         for j in range(i + 1, min(i + 5, len(lines))) if not drug_name else ():
             l2 = lines[j]
             if _is_detail_row(l2) or _is_totals_boundary(l2):
+                break
+            # Recurring table-column-header fragments (e.g. "Ins Paid",
+            # "Pres Addr Pres Phone...") are not a name continuation.
+            if _is_skippable_fragment(l2):
                 break
             # If it has specific data like date, money, NDC or phone, it's not a name continuation
             if (

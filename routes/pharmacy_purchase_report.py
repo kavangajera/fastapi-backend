@@ -19,18 +19,20 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
-from core.enums import Feature, UserRole
+from core.enums import Feature, ProcessType, UserRole
 from middlewares.auth import auth_incoming_req
 from models import DrugReport, Medicine
 from models.pharmacy import Pharmacy
+from schemas.pending_document import PendingDocumentItem
 from schemas.pharmacy_purchase_report import (
-    DrugReportListItem,
+    DrugReportListItemWrapped,
     DrugReportResponse,
     MedicineResponse,
 )
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.feature_gate import ensure_feature, entitled_store_ids
+from services.pending_documents import document_pending_state, fetch_pending_documents
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/reports", tags=["Drug Dispensed Reports"])
@@ -70,8 +72,29 @@ async def list_reports(
         ph_ids = await entitled_store_ids(db, ph_ids, Feature.TOP_QUANTITY_DRUG_REPORT)
         stmt = stmt.where(DrugReport.medical_store_id.in_(ph_ids))
     result = await db.execute(stmt)
-    reports = [DrugReportListItem.model_validate(r) for r in result.scalars().all()]
-    return success_response(reports, "Reports retrieved successfully")
+    reports = [DrugReportListItemWrapped.model_validate(r) for r in result.scalars().all()]
+
+    pending_items: list[PendingDocumentItem] = []
+    if skip == 0 and ph_ids is not None:
+        pending_docs = await fetch_pending_documents(
+            db,
+            process_type=ProcessType.DISPENSE.value,
+            medical_store_ids=ph_ids,
+            saved_model=DrugReport,
+        )
+        pending_items = [
+            PendingDocumentItem(
+                doc_key=d.doc_key,
+                state=document_pending_state(d.status),
+                original_filename=d.original_filename,
+                error_message=d.error_message,
+                created_at=d.created_at,
+                updated_at=d.updated_at,
+            )
+            for d in pending_docs
+        ]
+
+    return success_response([*pending_items, *reports], "Reports retrieved successfully")
 
 
 # ── GET /reports/{report_id} ──────────────────────────────────────────────────

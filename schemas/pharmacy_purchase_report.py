@@ -11,6 +11,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -104,3 +105,10 @@ class DrugReportListItem(AuditFields):
     report_to_date: str | None
     grand_total_rx_count: int | None
     grand_total_price: Decimal | None
+
+
+class DrugReportListItemWrapped(DrugReportListItem):
+    """`DrugReportListItem` tagged for the discriminated union used by
+    `GET /reports/`, which also surfaces pending Document placeholders."""
+
+    kind: Literal["drug_report"] = "drug_report"

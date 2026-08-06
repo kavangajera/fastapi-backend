@@ -16,6 +16,10 @@ from pydantic import BaseModel
 # On Alpine: apk add zbar
 # We defer the ImportError so the app can still start even without it;
 # the error surfaces only when the barcode endpoint is actually called.
+from services._native_libs import ensure_macos_homebrew_lib_paths
+
+ensure_macos_homebrew_lib_paths()
+
 try:
     from pyzbar.pyzbar import decode as _pyzbar_decode
 

@@ -4,7 +4,7 @@ from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 from fastapi import HTTPException, Request, Response
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -359,6 +359,8 @@ async def get_technician_by_medical_store_id(
     db: AsyncSession,
     user: System_Internal_User_Schema,
     ph_id: int | None = None,
+    skip: int = 0,
+    limit: int = 50,
 ):
     if user.role == UserRole.TECHNICIAN:
         _raise_error(403, "Technicians cannot access this resource")
@@ -379,9 +381,17 @@ async def get_technician_by_medical_store_id(
     else:
         _raise_error(403, "Not authorized")
 
-    result = await db.execute(stmt)
+    total = (
+        await db.execute(select(func.count()).select_from(stmt.subquery()))
+    ).scalar() or 0
+    result = await db.execute(stmt.offset(skip).limit(limit))
     technicians = result.scalars().all()
-    return [to_user_output(u) for u in technicians]
+    return {
+        "items": [to_user_output(u) for u in technicians],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 # ================= UPDATE USER =================
@@ -528,10 +538,16 @@ async def delete_self(
 # ================= ADMIN LISTS =================
 
 
-async def get_all_users(db: AsyncSession):
-    result = await db.execute(select(User))
+async def get_all_users(db: AsyncSession, skip: int = 0, limit: int = 50):
+    total = (await db.execute(select(func.count(User.user_id)))).scalar() or 0
+    result = await db.execute(select(User).offset(skip).limit(limit))
     users = result.scalars().all()
-    return [to_user_output(u) for u in users]
+    return {
+        "items": [to_user_output(u) for u in users],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 async def get_user_by_email(email: str, db: AsyncSession):
@@ -542,10 +558,18 @@ async def get_user_by_email(email: str, db: AsyncSession):
     return to_user_output(user_from_db)
 
 
-async def get_users_by_role(role: str, db: AsyncSession):
-    result = await db.execute(select(User).where(User.role == role))
+async def get_users_by_role(role: str, db: AsyncSession, skip: int = 0, limit: int = 50):
+    total = (
+        await db.execute(select(func.count(User.user_id)).where(User.role == role))
+    ).scalar() or 0
+    result = await db.execute(select(User).where(User.role == role).offset(skip).limit(limit))
     users = result.scalars().all()
-    return [to_user_output(u) for u in users]
+    return {
+        "items": [to_user_output(u) for u in users],
+        "total": total,
+        "skip": skip,
+        "limit": limit,
+    }
 
 
 async def get_current_user_profile(user_id: int, db: AsyncSession):

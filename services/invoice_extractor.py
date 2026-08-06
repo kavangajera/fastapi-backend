@@ -23,7 +23,10 @@ Copy strings exactly; never infer, calculate, repair, or copy values between fie
 Omit absent fields. Extract every product row and never merge rows. Seller sends the invoice;
 customer receives it. item_code is the vendor SKU; ndc is NDC/UPC. size is pack size and form
 is dosage form. Ignore repeated headers. Header values use the first page where visible;
-summary values belong to the page where printed."""
+summary values belong to the page where printed. Caution: a row may print description, quantity,
+and price crowded together on one line or in one visually merged column; still split them into
+their correct separate fields (description, order_qty/invoiced_qty, unit_price/extended_price)
+rather than leaving them concatenated or copying the whole crowded text into a single field."""
 
 
 class StrictModel(BaseModel):

@@ -6,10 +6,11 @@ Pydantic request/response models for the /documents endpoints.
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 
 from schemas.audit_fields import AuditFields
 
@@ -42,11 +43,25 @@ class DocumentStatusResponse(AuditFields):
     status: str
     retry_count: int
     error_message: str | None = None
-    result_data: str | None = None
+    # Stored on the Document row as a JSON-encoded string (MEDIUMTEXT); parsed
+    # here so the client can bind it straight into the save form (e.g.
+    # DispenseSaveRequest/InvoiceSaveRequest) once state is AWAITING_REVIEW,
+    # with no manual JSON.parse step.
+    result_data: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("result_data", mode="before")
+    @classmethod
+    def _parse_result_data(cls, value: Any) -> Any:
+        if isinstance(value, str):
+            try:
+                return json.loads(value)
+            except (ValueError, TypeError):
+                return None
+        return value
 
 
 class DocumentListResponse(BaseModel):

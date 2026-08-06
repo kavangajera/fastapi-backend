@@ -41,6 +41,8 @@ router = APIRouter(tags=["Reconciliation"])
 async def invoice_vs_billed_reconciliation(
     ph_id: int = Path(..., description="medical_store_id"),
     only_mismatch: bool = Query(False, description="Only rows where dispensed ≠ invoiced"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_async_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
@@ -48,9 +50,17 @@ async def invoice_vs_billed_reconciliation(
     await ensure_feature(db, ph_id, Feature.INVOICE_BILLED_CROSS_RECONCILIATION)
 
     rows, summary = await invoice_vs_billed(db, medical_store_id=ph_id, only_mismatch=only_mismatch)
+    page = rows[skip : skip + limit]
     return success_response(
         ReconciliationResponse.model_validate(
-            {"medical_store_id": ph_id, "summary": summary, "items": rows}
+            {
+                "medical_store_id": ph_id,
+                "summary": summary,
+                "items": page,
+                "total": len(rows),
+                "skip": skip,
+                "limit": limit,
+            }
         ).model_dump(),
         "Reconciliation completed",
     )

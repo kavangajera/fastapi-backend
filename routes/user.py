@@ -163,12 +163,16 @@ async def get_technicians(
         description="Optional pharmacy ID filter. Omit for all owned pharmacies.",
         examples=[2],
     ),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_async_db),
     user=Depends(auth_incoming_req),
 ):
     if user.role == UserRole.TECHNICIAN:
         _raise_error(403, "Technicians cannot access this resource")
-    res = await user_service.get_technician_by_medical_store_id(db=db, user=user, ph_id=ph_id)
+    res = await user_service.get_technician_by_medical_store_id(
+        db=db, user=user, ph_id=ph_id, skip=skip, limit=limit
+    )
     return success_response(res, "Technicians retrieved successfully")
 
 
@@ -215,12 +219,14 @@ async def delete_me(
 
 
 async def get_all_users(
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_async_db),
     user=Depends(auth_incoming_req),
 ):
     if user.role != UserRole.ADMIN:
         _raise_error(403, "Only admins can access this resource")
-    res = await user_service.get_all_users(db)
+    res = await user_service.get_all_users(db, skip=skip, limit=limit)
     return success_response(res, "Users retrieved successfully")
 
 
@@ -239,12 +245,14 @@ async def get_user_by_email(
 
 async def get_users_by_role(
     role: str = Query(..., description="Role: OWNER, TECHNICIAN, ADMIN.", examples=["OWNER"]),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_async_db),
     user=Depends(auth_incoming_req),
 ):
     if user.role != UserRole.ADMIN:
         _raise_error(403, "Only admins can access this resource")
-    res = await user_service.get_users_by_role(role, db)
+    res = await user_service.get_users_by_role(role, db, skip=skip, limit=limit)
     return success_response(res, "Users retrieved successfully")
 
 

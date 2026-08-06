@@ -8,6 +8,10 @@ import cv2
 import numpy as np
 from PIL import Image, UnidentifiedImageError
 
+from services._native_libs import ensure_macos_homebrew_lib_paths
+
+ensure_macos_homebrew_lib_paths()
+
 try:
     from pylibdmtx.pylibdmtx import decode
 

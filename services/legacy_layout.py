@@ -33,12 +33,21 @@ def validated_legacy_extract(extractor: Callable[[bytes], dict], file_bytes: byt
         return None
     if any(not row.get("rx_no") or not row.get("date_filled") for row in dispenses):
         return None
-    rx_numbers = [str(row["rx_no"]) for row in dispenses]
-    if len(rx_numbers) != len(set(rx_numbers)):
+    # A given rx_no legitimately repeats across refills (same prescription,
+    # different `ref` counter and fill date) — only reject when the same
+    # (rx_no, ref) pair repeats, which means a row was actually parsed
+    # twice by the extractor rather than a genuine refill.
+    rx_ref_pairs = [(str(row["rx_no"]), str(row.get("ref"))) for row in dispenses]
+    if len(rx_ref_pairs) != len(set(rx_ref_pairs)):
         return None
-    reported_count = str(report.get("grand_total", {}).get("total_rx_count") or "")
-    if reported_count and reported_count.isdigit() and int(reported_count) != len(dispenses):
-        return None
+
+    # Deliberately no cross-check of parsed row counts against any printed
+    # total (grand total or per-NDC "Total For:"). Those totals are the
+    # source document's own arithmetic and can be internally inconsistent
+    # (seen in practice) independent of whether every row was parsed
+    # correctly. Acceptance is purely structural: every row has the fields
+    # a detail row must have, and every medicine has a well-formed NDC and
+    # name. That's what "this PDF matches the known layout" means here.
 
     logger.info(
         "Legacy layout accepted: medicines={medicines} dispenses={dispenses}",

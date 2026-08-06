@@ -35,3 +35,6 @@ class ReconciliationResponse(BaseModel):
     pharmacy_id: int = Field(validation_alias="medical_store_id")
     summary: ReconciliationSummary
     items: list[ReconciliationRow]
+    total: int
+    skip: int
+    limit: int

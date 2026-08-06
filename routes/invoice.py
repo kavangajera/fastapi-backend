@@ -13,14 +13,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
-from core.enums import Feature, UserRole
+from core.enums import Feature, ProcessType, UserRole
 from middlewares.auth import auth_incoming_req
 from models import Invoice
 from models.pharmacy import Pharmacy
-from schemas.invoice import InvoiceResponse
+from schemas.invoice import InvoiceResponse, InvoiceResponseWrapped
+from schemas.pending_document import PendingDocumentItem
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.feature_gate import ensure_feature, entitled_store_ids
+from services.pending_documents import document_pending_state, fetch_pending_documents
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(prefix="/invoices", tags=["Invoices"])
@@ -55,8 +57,29 @@ async def list_invoices(
         ph_ids = await entitled_store_ids(db, ph_ids, Feature.INVOICE_TO_INVENTORY_AUTO)
         stmt = stmt.where(Invoice.medical_store_id.in_(ph_ids))
     result = await db.execute(stmt)
-    invoices = [InvoiceResponse.model_validate(i) for i in result.scalars().all()]
-    return success_response(invoices, "Invoices retrieved successfully")
+    invoices = [InvoiceResponseWrapped.model_validate(i) for i in result.scalars().all()]
+
+    pending_items: list[PendingDocumentItem] = []
+    if skip == 0 and ph_ids is not None:
+        pending_docs = await fetch_pending_documents(
+            db,
+            process_type=ProcessType.INVOICE.value,
+            medical_store_ids=ph_ids,
+            saved_model=Invoice,
+        )
+        pending_items = [
+            PendingDocumentItem(
+                doc_key=d.doc_key,
+                state=document_pending_state(d.status),
+                original_filename=d.original_filename,
+                error_message=d.error_message,
+                created_at=d.created_at,
+                updated_at=d.updated_at,
+            )
+            for d in pending_docs
+        ]
+
+    return success_response([*pending_items, *invoices], "Invoices retrieved successfully")
 
 
 @router.get(

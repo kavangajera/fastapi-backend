@@ -10,7 +10,7 @@ import os
 import shutil
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -120,7 +120,9 @@ async def get_overview(db: AsyncSession = Depends(get_async_db)):
 
 
 @router.get("/documents/recent", summary="Recent documents")
-async def get_recent_documents(limit: int = 30, db: AsyncSession = Depends(get_async_db)):
+async def get_recent_documents(
+    limit: int = Query(30, ge=1, le=500), db: AsyncSession = Depends(get_async_db)
+):
     result = await db.execute(select(Document).order_by(Document.created_at.desc()).limit(limit))
     docs = result.scalars().all()
     return [
@@ -408,7 +410,7 @@ def get_system_metrics():
 
 
 @router.get("/logs", summary="Recent application logs (in-memory)")
-def get_logs(limit: int = 100, level: str | None = None):
+def get_logs(limit: int = Query(100, ge=1, le=2000), level: str | None = None):
     from core.log_buffer import log_buffer
 
     return log_buffer.get_logs(limit=limit, level=level)

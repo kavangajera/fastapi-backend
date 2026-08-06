@@ -79,6 +79,15 @@ class UserData(AuditFields, UserStateFields):
     )
 
 
+class UserListData(BaseModel):
+    """Paginated list of user profiles."""
+
+    items: list[UserData] = Field(..., description="User profiles for this page.")
+    total: int = Field(..., description="Total matching users, across all pages.", examples=[42])
+    skip: int = Field(..., description="Number of records skipped.", examples=[0])
+    limit: int = Field(..., description="Page size requested.", examples=[50])
+
+
 class PharmacyData(AuditFields):
     """Pharmacy data returned by CRUD endpoints."""
 
@@ -378,25 +387,30 @@ class TechnicianListResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Technicians retrieved successfully"]
     )
-    data: list[UserData] = Field(..., description="Array of technician profiles.")
+    data: UserListData = Field(..., description="Paginated array of technician profiles.")
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "status_code": 200,
                 "message": "Technicians retrieved successfully",
-                "data": [
-                    {
-                        "user_id": 9,
-                        "email": "Every time add new email because of it is unique",
-                        "role": "TECHNICIAN",
-                    },
-                    {
-                        "user_id": 12,
-                        "email": "User2Tech@gmail.com",
-                        "role": "TECHNICIAN",
-                    },
-                ],
+                "data": {
+                    "items": [
+                        {
+                            "user_id": 9,
+                            "email": "Every time add new email because of it is unique",
+                            "role": "TECHNICIAN",
+                        },
+                        {
+                            "user_id": 12,
+                            "email": "User2Tech@gmail.com",
+                            "role": "TECHNICIAN",
+                        },
+                    ],
+                    "total": 2,
+                    "skip": 0,
+                    "limit": 50,
+                },
             }
         }
     }
@@ -412,30 +426,35 @@ class UserListResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Users retrieved successfully"]
     )
-    data: list[UserData] = Field(..., description="Array of all user profiles.")
+    data: UserListData = Field(..., description="Paginated array of all user profiles.")
 
     model_config = {
         "json_schema_extra": {
             "example": {
                 "status_code": 200,
                 "message": "Users retrieved successfully",
-                "data": [
-                    {
-                        "user_id": 4,
-                        "email": "user2@gmail.com",
-                        "role": "OWNER",
-                    },
-                    {
-                        "user_id": 6,
-                        "email": "admin@gmail.com",
-                        "role": "ADMIN",
-                    },
-                    {
-                        "user_id": 12,
-                        "email": "User2Tech@gmail.com",
-                        "role": "TECHNICIAN",
-                    },
-                ],
+                "data": {
+                    "items": [
+                        {
+                            "user_id": 4,
+                            "email": "user2@gmail.com",
+                            "role": "OWNER",
+                        },
+                        {
+                            "user_id": 6,
+                            "email": "admin@gmail.com",
+                            "role": "ADMIN",
+                        },
+                        {
+                            "user_id": 12,
+                            "email": "User2Tech@gmail.com",
+                            "role": "TECHNICIAN",
+                        },
+                    ],
+                    "total": 3,
+                    "skip": 0,
+                    "limit": 50,
+                },
             }
         }
     }
@@ -472,8 +491,8 @@ class UsersByRoleResponse(BaseModel):
     message: str = Field(
         ..., description="Result summary.", examples=["Users retrieved successfully"]
     )
-    data: list[UserData] = Field(
-        ..., description="Array of user profiles matching the requested role."
+    data: UserListData = Field(
+        ..., description="Paginated array of user profiles matching the requested role."
     )
 
     model_config = {
@@ -481,18 +500,23 @@ class UsersByRoleResponse(BaseModel):
             "example": {
                 "status_code": 200,
                 "message": "Users retrieved successfully",
-                "data": [
-                    {
-                        "user_id": 4,
-                        "email": "user2@gmail.com",
-                        "role": "OWNER",
-                    },
-                    {
-                        "user_id": 7,
-                        "email": "tech@gmail.com",
-                        "role": "OWNER",
-                    },
-                ],
+                "data": {
+                    "items": [
+                        {
+                            "user_id": 4,
+                            "email": "user2@gmail.com",
+                            "role": "OWNER",
+                        },
+                        {
+                            "user_id": 7,
+                            "email": "tech@gmail.com",
+                            "role": "OWNER",
+                        },
+                    ],
+                    "total": 2,
+                    "skip": 0,
+                    "limit": 50,
+                },
             }
         }
     }
