@@ -17,8 +17,10 @@ import asyncio
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from kafka_worker.errors import PermanentDocumentError
 from models.document import Document
 from services.document_storage import document_storage
+from services.extraction_errors import NoExtractableDataError
 from services.invoice_service import count_pdf_pages, extract_invoice_from_pdf
 
 
@@ -39,7 +41,12 @@ async def handle_invoice(
         p=page_count,
     )
 
-    invoice_payload = await asyncio.to_thread(extract_invoice_from_pdf, file_bytes, filename)
+    try:
+        invoice_payload = await asyncio.to_thread(extract_invoice_from_pdf, file_bytes, filename)
+    except NoExtractableDataError as exc:
+        # Every page was checked and none had usable data — retrying won't
+        # help, this file isn't an invoice.
+        raise PermanentDocumentError(422, str(exc)) from exc
     payload_dict = invoice_payload.model_dump()
     payload_dict["medical_store_id"] = medical_store_id
     payload_dict["source_filename"] = filename

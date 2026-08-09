@@ -17,11 +17,16 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.config import settings
+from services.extraction_errors import NoExtractableDataError
 
 TOOL_NAME = "extract_dispense_page"
 SYSTEM_PROMPT = """Extract exact visible pharmacy data from one page; call the tool once.
 The image controls layout. Copy strings exactly; never infer, calculate, repair, or merge.
 Omit absent fields. Ignore repeated headers and examples.
+Call the tool exactly once for every page, no matter its content or layout — never respond
+without calling it. If a page has no medicine/dispense rows at all (a cover page, signature
+page, blank page, or a totals-only page with no drug/patient rows), still call the tool and
+pass an empty medicines list rather than refusing or describing the page in plain text.
 Summary (Total For/Packs/TotalRxCount/no patient or RX): d=[]; Qty Disp->t.qd,
 Packs->t.pk, TotalRxCount->t.rx. Detail: every row under its drug+NDC;
 stacked Qty Disp/Qty Ord->qd/qo. Price->pr, cash/retail->cp, total->tp;
@@ -150,7 +155,14 @@ def extraction_tool() -> dict[str, Any]:
         "function": {
             "name": TOOL_NAME,
             "description": "Extract visible page fields sparsely; omit absent values.",
-            "strict": False,
+            # Grammar-constrained decoding: the model literally cannot emit
+            # a token that violates the schema, which is what actually
+            # prevents malformed function-call JSON (vs. just retrying
+            # after the fact). Compatible here because every model already
+            # sets extra="forbid" (-> additionalProperties: false) and all
+            # fields are optional/nullable, matching what strict mode
+            # requires from the schema shape.
+            "strict": True,
             "parameters": _inline_schema(CompactPage.model_json_schema(by_alias=True)),
         },
     }
@@ -171,31 +183,37 @@ def _render_pages(pdf_bytes: bytes) -> list[str]:
     return encoded
 
 
-def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, dict, dict]:
-    client = OpenAI(
-        api_key=settings.OPENROUTER_API_KEY,
-        base_url=settings.OPENROUTER_BASE_URL,
-        timeout=settings.DOCUMENT_LLM_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
-    started = perf_counter()
-    response = client.chat.completions.create(
+_NUDGE = (
+    "You must call the extract_dispense_page tool exactly once for this page. "
+    "If the page has no medicine/dispense rows (a cover, signature, blank, or "
+    "totals-only page), call the tool anyway with an empty medicines list — "
+    "do not respond without calling the tool."
+)
+
+
+def _call_extraction_tool(
+    client: OpenAI, image: str, page_number: int, page_count: int, *, nudge: bool = False
+):
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"Extract page {page_number} of {page_count}."},
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image}"},
+                },
+            ],
+        },
+    ]
+    if nudge:
+        messages.append({"role": "user", "content": _NUDGE})
+    return client.chat.completions.create(
         model=settings.OPENROUTER_MODEL,
         temperature=0,
         max_tokens=settings.DOCUMENT_LLM_MAX_OUTPUT_TOKENS,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": f"Extract page {page_number} of {page_count}."},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/jpeg;base64,{image}"},
-                    },
-                ],
-            },
-        ],
+        messages=messages,
         tools=[extraction_tool()],
         tool_choice={"type": "function", "function": {"name": TOOL_NAME}},
         extra_body={
@@ -203,16 +221,99 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, d
                 "require_parameters": True,
                 "data_collection": "deny",
                 "zdr": True,
-            }
+            },
+            # This is a direct structured-extraction call, not a task that
+            # benefits from chain-of-thought. Gemini 2.5's thinking tokens
+            # otherwise draw from the same max_tokens budget as the actual
+            # function-call output, and on dense pages (many rows/fields)
+            # that starves the JSON generation and truncates it mid-object,
+            # which the API reports as MALFORMED_FUNCTION_CALL.
+            "reasoning": {"enabled": False},
         },
     )
-    calls = response.choices[0].message.tool_calls or []
+
+
+_MAX_PAGE_ATTEMPTS = 4
+
+
+def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, dict, dict]:
+    """Extract one page. A page that genuinely has nothing to extract (cover,
+    signature, blank, totals-only) is not a failure — every field on
+    `CompactPage` is optional, so an empty page is valid output. Gemini's
+    function-call generation is not perfectly reliable on dense pages (it
+    can truncate mid-JSON, reported as MALFORMED_FUNCTION_CALL) even with
+    reasoning disabled and a generous token budget, so retry a few times
+    before giving up. If it still never returns a valid tool call, that one
+    page is treated as empty rather than failing the whole multi-page
+    document; whether the *document as a whole* is a dispense report is
+    judged once, after all pages are merged (see `process_pdf`)."""
+    client = OpenAI(
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url=settings.OPENROUTER_BASE_URL,
+        timeout=settings.DOCUMENT_LLM_TIMEOUT_SECONDS,
+        max_retries=1,
+    )
+    started = perf_counter()
+
+    response = None
+    calls: list = []
+    for attempt in range(1, _MAX_PAGE_ATTEMPTS + 1):
+        try:
+            response = _call_extraction_tool(
+                client, image, page_number, page_count, nudge=attempt > 1
+            )
+            # Under heavy concurrent load a provider can occasionally hand
+            # back a degraded/error-shaped 200 response (e.g. `choices`
+            # missing or None) instead of a clean HTTP error. Treat that
+            # the same as "no tool call" — retry.
+            choices = getattr(response, "choices", None) or []
+            calls = choices[0].message.tool_calls or [] if choices else []
+        except Exception as exc:
+            # Also under heavy load, the call can fail before we even get
+            # a parsed response — timeouts, connection resets, or a
+            # truncated HTTP body the SDK can't JSON-decode. None of that
+            # is this page's fault; retry rather than losing the whole
+            # multi-page document to one attempt's transport hiccup.
+            logger.warning(
+                "Page {p} attempt {a}/{n} raised {error} — retrying",
+                p=page_number,
+                a=attempt,
+                n=_MAX_PAGE_ATTEMPTS,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            response = None
+            calls = []
+            continue
+        if len(calls) == 1 and calls[0].function.name == TOOL_NAME:
+            break
+        logger.warning(
+            "Page {p} attempt {a}/{n} did not return a tool call",
+            p=page_number,
+            a=attempt,
+            n=_MAX_PAGE_ATTEMPTS,
+        )
+
     if len(calls) != 1 or calls[0].function.name != TOOL_NAME:
-        raise ValueError(f"Page {page_number} did not return the required tool call")
-    page = CompactPage.model_validate_json(calls[0].function.arguments)
-    if page.source_page != page_number:
-        raise ValueError(f"Page number mismatch: expected {page_number}, got {page.source_page}")
-    usage = response.usage
+        logger.warning(
+            "Page {p} never returned a tool call after {n} attempts — treating as an empty page",
+            p=page_number,
+            n=_MAX_PAGE_ATTEMPTS,
+        )
+        page = CompactPage(source_page=page_number)
+    else:
+        page = CompactPage.model_validate_json(calls[0].function.arguments)
+        if page.source_page != page_number:
+            # Diagnostic field only (merging is keyed by NDC, not
+            # source_page) — trust our own loop index over a model that
+            # miscounted rather than failing the page.
+            logger.warning(
+                "Page number mismatch: expected {expected}, model said {got} — using {expected}",
+                expected=page_number,
+                got=page.source_page,
+            )
+            page.source_page = page_number
+
+    usage = getattr(response, "usage", None)
     usage_extra = getattr(usage, "model_extra", None) or {}
     metrics = {
         "seconds": perf_counter() - started,
@@ -233,9 +334,14 @@ def _merge_pages(pages: list[dict]) -> dict[str, Any]:
         if any(value is not None for value in page.get("grand_total", {}).values()):
             report["grand_total"].update(page["grand_total"])
         for medicine in page.get("medicines", []):
-            if not medicine.get("drug_name") or not medicine.get("ndc"):
+            if not medicine.get("drug_name"):
                 continue
-            key = medicine["ndc"]
+            # Not every report format prints an NDC per row (e.g. a daily
+            # dispense log by patient/date rather than a per-drug summary
+            # report) — fall back to the drug name so those rows still
+            # merge/survive instead of being silently dropped for lacking
+            # a field this particular document never had.
+            key = medicine.get("ndc") or medicine["drug_name"].strip().upper()
             target = medicines.setdefault(key, {**medicine, "dispenses": [], "totals": {}})
             if len(medicine["drug_name"]) > len(target["drug_name"]):
                 target["drug_name"] = medicine["drug_name"]
@@ -274,7 +380,18 @@ def process_pdf(pdf_bytes: bytes) -> dict[str, Any]:
         completion=sum(item["completion_tokens"] or 0 for item in metrics),
         cost=sum(float(item["cost"] or 0) for item in metrics),
     )
-    return _merge_pages([results[index] for index in sorted(results)])
+    report = _merge_pages([results[index] for index in sorted(results)])
+
+    has_any_data = bool(report["medicines"]) or any(
+        value is not None for value in report["grand_total"].values()
+    )
+    if not has_any_data:
+        raise NoExtractableDataError(
+            f"No dispense/medicine data could be extracted from any of the "
+            f"{len(images)} page(s) in this document — it does not appear to "
+            f"be a Drug Dispensed Report."
+        )
+    return report
 
 
 def dump_tool_schema() -> str:

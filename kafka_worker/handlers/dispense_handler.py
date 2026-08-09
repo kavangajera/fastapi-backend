@@ -13,6 +13,7 @@ from models.dispense_report import Dispense
 from models.document import Document
 from services.document_extractor import extract_report_from_file
 from services.document_storage import document_storage
+from services.extraction_errors import NoExtractableDataError
 from services.validation import validate_tier1
 
 
@@ -24,7 +25,12 @@ async def handle_dispense(
 ) -> dict:
     file_bytes = document_storage.retrieve(doc.storage_path)
     filename = doc.original_filename or doc.doc_key
-    report_data = await asyncio.to_thread(extract_report_from_file, file_bytes, filename)
+    try:
+        report_data = await asyncio.to_thread(extract_report_from_file, file_bytes, filename)
+    except NoExtractableDataError as exc:
+        # Every page was checked and none had usable data — retrying won't
+        # help, this file isn't a dispense report.
+        raise PermanentDocumentError(422, str(exc)) from exc
     report_data["medical_store_id"] = medical_store_id
     report_data["document_id"] = doc.id
 

@@ -15,9 +15,9 @@ class Settings(BaseSettings):
     OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
     GOTENBERG_URL: str = "http://localhost:3000"
     DOCUMENT_LLM_RENDER_DPI: int = 300
-    DOCUMENT_LLM_MAX_CONCURRENCY: int = 3
+    DOCUMENT_LLM_MAX_CONCURRENCY: int = 16
     DOCUMENT_LLM_TIMEOUT_SECONDS: int = 120
-    DOCUMENT_LLM_MAX_OUTPUT_TOKENS: int = 3500
+    DOCUMENT_LLM_MAX_OUTPUT_TOKENS: int = 12000
     INVOICE_MAX_FILES: int = 10
     INVOICE_MAX_PAGES: int = 15
     BARCODE_MAX_FILES: int = 50

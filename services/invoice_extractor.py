@@ -16,6 +16,7 @@ from PIL import Image
 from pydantic import BaseModel, ConfigDict, Field
 
 from core.config import settings
+from services.extraction_errors import NoExtractableDataError
 
 TOOL_NAME = "extract_invoice_page"
 SYSTEM_PROMPT = """Extract exact visible invoice data from one page and call the tool once.
@@ -26,7 +27,11 @@ is dosage form. Ignore repeated headers. Header values use the first page where 
 summary values belong to the page where printed. Caution: a row may print description, quantity,
 and price crowded together on one line or in one visually merged column; still split them into
 their correct separate fields (description, order_qty/invoiced_qty, unit_price/extended_price)
-rather than leaving them concatenated or copying the whole crowded text into a single field."""
+rather than leaving them concatenated or copying the whole crowded text into a single field.
+Call the tool exactly once for every page, no matter its content or layout — never respond
+without calling it. If a page has no product rows at all (a cover page, signature page, blank
+page, or a totals-only page), still call the tool and pass an empty line_items list rather than
+refusing or describing the page in plain text."""
 
 
 class StrictModel(BaseModel):
@@ -117,7 +122,12 @@ def _tool() -> dict[str, Any]:
         "function": {
             "name": TOOL_NAME,
             "description": "Extract sparse visible invoice fields from one page.",
-            "strict": False,
+            # See dispense_gemini_extractor.py::extraction_tool — grammar-
+            # constrained decoding is what actually prevents malformed
+            # function-call JSON. Compatible here for the same reason:
+            # extra="forbid" on every model (-> additionalProperties: false)
+            # and every field optional/nullable.
+            "strict": True,
             "parameters": _schema(),
         },
     }
@@ -138,28 +148,33 @@ def _render(pdf_path: str) -> list[str]:
     return images
 
 
-def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, Invoice, dict]:
-    client = OpenAI(
-        api_key=settings.OPENROUTER_API_KEY,
-        base_url=settings.OPENROUTER_BASE_URL,
-        timeout=settings.DOCUMENT_LLM_TIMEOUT_SECONDS,
-        max_retries=1,
-    )
-    started = perf_counter()
-    response = client.chat.completions.create(
+_NUDGE = (
+    "You must call the extract_invoice_page tool exactly once for this page. If the page "
+    "has no product rows (a cover, signature, blank, or totals-only page), call the tool "
+    "anyway with an empty line_items list — do not respond without calling the tool."
+)
+
+
+def _call_extraction_tool(
+    client: OpenAI, image: str, page_number: int, page_count: int, *, nudge: bool = False
+):
+    messages: list[dict[str, Any]] = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": f"Extract invoice page {page_number}/{page_count}."},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}},
+            ],
+        },
+    ]
+    if nudge:
+        messages.append({"role": "user", "content": _NUDGE})
+    return client.chat.completions.create(
         model=settings.OPENROUTER_MODEL,
         temperature=0,
         max_tokens=settings.DOCUMENT_LLM_MAX_OUTPUT_TOKENS,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": f"Extract invoice page {page_number}/{page_count}."},
-                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image}"}},
-                ],
-            },
-        ],
+        messages=messages,
         tools=[_tool()],
         tool_choice={"type": "function", "function": {"name": TOOL_NAME}},
         extra_body={
@@ -167,17 +182,90 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, I
                 "require_parameters": True,
                 "data_collection": "deny",
                 "zdr": True,
-            }
+            },
+            # See dispense_gemini_extractor.py — thinking tokens otherwise
+            # draw from the same max_tokens budget as the function-call
+            # output and can truncate it into MALFORMED_FUNCTION_CALL on
+            # dense pages.
+            "reasoning": {"enabled": False},
         },
     )
-    calls = response.choices[0].message.tool_calls or []
+
+
+_MAX_PAGE_ATTEMPTS = 4
+
+
+def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, Invoice, dict]:
+    """Extract one page. A page with nothing to extract (cover, signature,
+    blank, totals-only) is not a failure — every `Invoice` field is optional.
+    Gemini's function-call generation is not perfectly reliable on dense
+    pages even with reasoning disabled and a generous token budget, so
+    retry a few times before giving up. If it still never returns a valid
+    tool call, that one page is treated as empty rather than failing the
+    whole multi-page document; whether the document as a whole is an
+    invoice is judged once, after all pages are merged (see
+    `InvoiceParser.parse`)."""
+    client = OpenAI(
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url=settings.OPENROUTER_BASE_URL,
+        timeout=settings.DOCUMENT_LLM_TIMEOUT_SECONDS,
+        max_retries=1,
+    )
+    started = perf_counter()
+
+    response = None
+    calls: list = []
+    for attempt in range(1, _MAX_PAGE_ATTEMPTS + 1):
+        try:
+            response = _call_extraction_tool(
+                client, image, page_number, page_count, nudge=attempt > 1
+            )
+            # Under heavy concurrent load a provider can occasionally hand
+            # back a degraded/error-shaped 200 response (e.g. `choices`
+            # missing or None) instead of a clean HTTP error. Treat that
+            # the same as "no tool call" — retry.
+            choices = getattr(response, "choices", None) or []
+            calls = choices[0].message.tool_calls or [] if choices else []
+        except Exception as exc:
+            # Also under heavy load, the call can fail before we even get
+            # a parsed response — timeouts, connection resets, or a
+            # truncated HTTP body the SDK can't JSON-decode. None of that
+            # is this page's fault; retry rather than losing the whole
+            # multi-page document to one attempt's transport hiccup.
+            logger.warning(
+                "Invoice page {p} attempt {a}/{n} raised {error} — retrying",
+                p=page_number,
+                a=attempt,
+                n=_MAX_PAGE_ATTEMPTS,
+                error=f"{type(exc).__name__}: {exc}",
+            )
+            response = None
+            calls = []
+            continue
+        if len(calls) == 1 and calls[0].function.name == TOOL_NAME:
+            break
+        logger.warning(
+            "Invoice page {p} attempt {a}/{n} did not return a tool call",
+            p=page_number,
+            a=attempt,
+            n=_MAX_PAGE_ATTEMPTS,
+        )
+
     if len(calls) != 1 or calls[0].function.name != TOOL_NAME:
-        raise ValueError(f"Invoice page {page_number} did not return the required tool call")
-    usage = response.usage
+        logger.warning(
+            "Invoice page {p} never returned a tool call after {n} attempts — treating as an empty page",
+            p=page_number,
+            n=_MAX_PAGE_ATTEMPTS,
+        )
+        invoice = Invoice()
+    else:
+        invoice = Invoice.model_validate_json(calls[0].function.arguments)
+
+    usage = getattr(response, "usage", None)
     usage_extra = getattr(usage, "model_extra", None) or {}
     return (
         page_number,
-        Invoice.model_validate_json(calls[0].function.arguments),
+        invoice,
         {
             "seconds": perf_counter() - started,
             "prompt_tokens": getattr(usage, "prompt_tokens", None),
@@ -229,4 +317,20 @@ class InvoiceParser:
             completion=sum(item["completion_tokens"] or 0 for item in metrics),
             cost=sum(float(item["cost"] or 0) for item in metrics),
         )
-        return _merge([results[index] for index in sorted(results)])
+        invoice = _merge([results[index] for index in sorted(results)])
+        if not _invoice_has_data(invoice):
+            raise NoExtractableDataError(
+                f"No invoice/line-item data could be extracted from any of the "
+                f"{len(images)} page(s) in this document — it does not appear "
+                f"to be an invoice."
+            )
+        return invoice
+
+
+def _invoice_has_data(invoice: Invoice) -> bool:
+    if invoice.line_items:
+        return True
+    header = invoice.model_dump(exclude_none=True, exclude={"line_items", "summary"})
+    if header:
+        return True
+    return bool(invoice.summary.model_dump(exclude_none=True))
