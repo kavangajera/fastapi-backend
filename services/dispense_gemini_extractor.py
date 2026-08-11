@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from core.config import settings
 from services.extraction_errors import NoExtractableDataError
+from services.report_service import compute_medicine_totals
 
 TOOL_NAME = "extract_dispense_page"
 SYSTEM_PROMPT = """Extract exact visible pharmacy data from one page; call the tool once.
@@ -352,6 +353,23 @@ def _merge_pages(pages: list[dict]) -> dict[str, Any]:
                 dispense["warnings"] = []
                 target["dispenses"].append(dispense)
     report["medicines"] = list(medicines.values())
+
+    # Totals are derived from the merged dispenses, not trusted from
+    # whatever the extractor reported per-page — some formats (e.g. a
+    # daily dispense log) never print a per-drug totals line at all, and
+    # even when one is visible, summing the actual rows this document
+    # produced is more reliable than a single page's printed figure once
+    # dispenses span multiple pages. `packs`/`total_cost` have no
+    # per-dispense equivalent, so those pass through whatever (if
+    # anything) the extractor saw.
+    for medicine in report["medicines"]:
+        computed = compute_medicine_totals(medicine["dispenses"])
+        medicine["totals"] = {
+            "packs": medicine["totals"].get("packs"),
+            "total_cost": medicine["totals"].get("total_cost"),
+            **computed,
+        }
+
     return report
 
 
