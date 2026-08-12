@@ -19,6 +19,7 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import Dispense, DrugReport, Medicine
+from services.ndc_utils import ndc_for_storage
 
 
 def _to_decimal(value: Any | None) -> Decimal | None:
@@ -143,7 +144,7 @@ async def store_report(
         db_med = Medicine(
             report_id=db_report.id,
             drug_name=med_data["drug_name"],
-            ndc=med_data["ndc"],
+            ndc=ndc_for_storage(med_data["ndc"]),
             inventory_bucket=med_data.get("inventory_bucket"),
             lot_no_exp_date=med_data.get("lot_no_exp_date"),
             lot_number=med_data.get("lot_number"),

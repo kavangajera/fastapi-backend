@@ -14,10 +14,11 @@ import fitz
 from loguru import logger
 from openai import OpenAI
 from PIL import Image
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from core.config import settings
 from services.extraction_errors import NoExtractableDataError
+from services.ndc_utils import to_ndc11
 from services.report_service import compute_medicine_totals
 
 TOOL_NAME = "extract_dispense_page"
@@ -30,12 +31,21 @@ page, blank page, or a totals-only page with no drug/patient rows), still call t
 pass an empty medicines list rather than refusing or describing the page in plain text.
 Summary (Total For/Packs/TotalRxCount/no patient or RX): d=[]; Qty Disp->t.qd,
 Packs->t.pk, TotalRxCount->t.rx. Detail: every row under its drug+NDC;
-stacked Qty Disp/Qty Ord->qd/qo. Price->pr, cash/retail->cp, total->tp;
+stacked Qty Disp/Qty Ord->qd/qo. A combined Qty/Dys column stacks two numbers: the
+quantity on top, usually with decimals (180.000, 15.000), and the days supply below it as a
+bare integer (90, 30). qd is always the quantity, never the days number; put the days in ds.
+Price->pr, cash/retail->cp, total->tp;
 Ref#/Ref->ref, explicit Reference Number->rno. Report FROM/To->rf/rt; Date:->rd.
 x=true only for a visibly clipped or continuing row. Never create fake dispense rows.
+NDC lives inside the drug column (e.g. "Drug Dispensed"), usually printed on its own line
+directly above the drug name; take it from there even when no NDC header exists. Numbers
+under other columns are never the NDC: an Ins\\Bin column holds a carrier code (HOR, MMS2,
+AMR, CIGNA) plus a 6-digit BIN (610606, 610014) — these are insurance routing values, not a
+drug. Never emit a medicine whose name is a carrier or whose ndc is a BIN.
 Keys: root p=page, ph=pharmacy, gt=grand total, m=medicines. Pharmacy n=name,
 a=address, ph=phone, fx=fax, rd=report date, rf/from, rt/to. Medicine n=drug,
-ndc=NDC, ib=inventory, lot=lot, exp=expiration, pack=pack size, mfr=manufacturer,
+ndc=NDC verbatim, keep printed hyphens/spaces, never pad or strip,
+ib=inventory, lot=lot, exp=expiration, pack=pack size, mfr=manufacturer,
 gen=generic, str=strength, daw=DAW, sch=schedule, t=totals, d=dispenses.
 Totals pk=packs, qd=quantity dispensed, rx=RX count, ins=insurance paid,
 price=price, cost=cost. Dispense x=partial, rx=RX, rno=reference, qo/qd=quantities,
@@ -119,6 +129,25 @@ class CompactMedicine(ToolModel):
     drug_schedule: str | None = Field(None, alias="sch")
     totals: CompactTotals | None = Field(None, alias="t")
     dispenses: list[CompactDispense] = Field(default_factory=list, alias="d")
+
+    @field_validator("ndc", mode="before")
+    @classmethod
+    def _normalize_ndc(cls, value: Any) -> Any:
+        """Fold a printed NDC ("12345-6789-01", "0378-4275-77") to 11 digits.
+
+        Done here rather than in the prompt because converting a 10-digit
+        NDC needs the printed segment shape, which stripping would destroy.
+        Normalizing at extraction also keeps `_merge_pages` keyed
+        consistently, so the same drug printed dashed on one page and plain
+        on another collapses into one medicine instead of two.
+
+        A value that cannot be normalized is kept verbatim (not dropped) so
+        the review UI shows what was printed and tier-1 can flag it.
+        """
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return to_ndc11(stripped) or (stripped or None)
 
 
 class CompactPage(ToolModel):
@@ -325,6 +354,21 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, d
     return page_number, page.model_dump(exclude_none=True), metrics
 
 
+def _is_phantom_medicine(medicine: dict[str, Any]) -> bool:
+    """True for a row that isn't a drug at all.
+
+    Wide daily-log layouts put an insurance column (`Ins\\Bin`) beside the
+    drug column, and the model sometimes reads a carrier code + its 6-digit
+    BIN (e.g. "CIGNA" / 610606) as a drug + NDC. Those rows never carry
+    dispenses and never carry a resolvable NDC.
+
+    The two conditions are required together so real data is never dropped:
+    a genuine summary-only row (a per-drug "Total For:" block) has no
+    dispenses either, but it does have a valid NDC, so it is kept.
+    """
+    return not medicine.get("dispenses") and not to_ndc11(medicine.get("ndc"))
+
+
 def _merge_pages(pages: list[dict]) -> dict[str, Any]:
     report: dict[str, Any] = {"pharmacy": {}, "grand_total": {}, "medicines": []}
     medicines: dict[str, dict] = {}
@@ -352,7 +396,8 @@ def _merge_pages(pages: list[dict]) -> dict[str, Any]:
                 dispense["source_page"] = page["source_page"]
                 dispense["warnings"] = []
                 target["dispenses"].append(dispense)
-    report["medicines"] = list(medicines.values())
+
+    report["medicines"] = [m for m in medicines.values() if not _is_phantom_medicine(m)]
 
     # Totals are derived from the merged dispenses, not trusted from
     # whatever the extractor reported per-page — some formats (e.g. a

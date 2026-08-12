@@ -43,6 +43,7 @@ from services.inventory_service import (
     reverse_single_dispense_qty,
     subtract_dispense_quantities,
 )
+from services.ndc_utils import ndc_for_storage
 from services.pharmacy_authz import ensure_pharmacy_access
 from services.record_id_service import stamp_on_create
 from services.report_service import _build_dispense, _to_decimal, _to_int, compute_medicine_totals
@@ -217,7 +218,7 @@ async def save_dispense_report(
         db_med = Medicine(
             report_id=db_report.id,
             drug_name=med_in.drug_name,
-            ndc=med_in.ndc,
+            ndc=ndc_for_storage(med_in.ndc),
             inventory_bucket=med_in.inventory_bucket,
             lot_no_exp_date=med_in.lot_no_exp_date,
             lot_number=med_in.lot_number,
@@ -436,7 +437,7 @@ async def update_dispense_report(
             db_med = Medicine(
                 report_id=existing_report.id,
                 drug_name=med_in.drug_name,
-                ndc=med_in.ndc,
+                ndc=ndc_for_storage(med_in.ndc),
                 inventory_bucket=med_in.inventory_bucket,
                 lot_no_exp_date=med_in.lot_no_exp_date,
                 lot_number=med_in.lot_number,

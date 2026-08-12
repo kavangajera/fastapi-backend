@@ -10,11 +10,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from schemas.audit_input import AuditInputFields
 from schemas.save_invoice import InventoryUpdate
 from schemas.validation import ValidationReport
+from services.ndc_utils import to_ndc11
 
 
 class DispensePharmacyMeta(BaseModel):
@@ -100,6 +101,25 @@ class MedicineInput(AuditInputFields):
     drug_schedule: str | None = None
     totals: MedicineTotalsInput | None = None
     dispenses: list[DispenseLineInput] = Field(default_factory=list)
+
+    @field_validator("ndc", mode="before")
+    @classmethod
+    def _normalize_ndc(cls, value: Any) -> Any:
+        """Fold a printed NDC ("12345-6789-01") to 11 digits on the way in.
+
+        Runs before `validate_tier1` sees the body (the save route dumps
+        this model first), so a legitimately hyphenated NDC no longer trips
+        a spurious MALFORMED_NDC error and 422s the save. Also covers
+        hand-edited review-form values and direct API clients, which never
+        pass through the extractor's own normalization.
+
+        A value that cannot be normalized is kept verbatim so tier-1 still
+        flags it.
+        """
+        if not isinstance(value, str):
+            return value
+        stripped = value.strip()
+        return to_ndc11(stripped) or stripped
 
 
 class DispenseSaveRequest(AuditInputFields):
