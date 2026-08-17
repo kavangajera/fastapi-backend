@@ -257,3 +257,36 @@ def test_merge_pages_keeps_summary_only_medicine() -> None:
 
     assert len(merged["medicines"]) == 1
     assert merged["medicines"][0]["ndc"] == "70377007713"
+
+
+# ── Payload must survive the Kafka publish path ──────────────────────────
+#
+# The worker json.dumps() the extraction result twice: once for the DB
+# (with default=str) and once for Kafka (`kafka_infra/producer.py`). A
+# Decimal in `totals` passed the first and crashed the second in
+# production, so assert the payload is JSON-native on its own.
+
+
+def test_merge_pages_output_is_json_serializable_without_default() -> None:
+    import json
+
+    page = CompactPage.model_validate(
+        {
+            "p": 1,
+            "m": [
+                {
+                    "n": "DRUG A",
+                    "ndc": "0378-4275-77",
+                    "d": [{"rx": "1", "qd": "30.5", "pr": "$4.80"}, {"rx": "2", "qd": "60"}],
+                }
+            ],
+        }
+    )
+    merged = _merge_pages([page.model_dump(exclude_none=True)])
+
+    # No default= fallback: this is exactly what the Kafka producer does.
+    json.dumps(merged)
+
+    totals = merged["medicines"][0]["totals"]
+    assert totals["total_quantity_dispensed"] == "90.5"
+    assert totals["total_rx_count"] == 2  # int keeps its type

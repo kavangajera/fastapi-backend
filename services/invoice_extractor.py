@@ -251,12 +251,15 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, I
             n=_MAX_PAGE_ATTEMPTS,
         )
 
+    page_failed = False
     if len(calls) != 1 or calls[0].function.name != TOOL_NAME:
         logger.warning(
             "Invoice page {p} never returned a tool call after {n} attempts — treating as an empty page",
             p=page_number,
             n=_MAX_PAGE_ATTEMPTS,
         )
+        # Distinct from a legitimately empty page — see `InvoiceParser.parse`.
+        page_failed = True
         invoice = Invoice()
     else:
         invoice = Invoice.model_validate_json(calls[0].function.arguments)
@@ -271,6 +274,7 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, I
             "prompt_tokens": getattr(usage, "prompt_tokens", None),
             "completion_tokens": getattr(usage, "completion_tokens", None),
             "cost": getattr(usage, "cost", None) or usage_extra.get("cost"),
+            "failed": page_failed,
         },
     )
 
@@ -318,13 +322,26 @@ class InvoiceParser:
             cost=sum(float(item["cost"] or 0) for item in metrics),
         )
         invoice = _merge([results[index] for index in sorted(results)])
-        if not _invoice_has_data(invoice):
-            raise NoExtractableDataError(
-                f"No invoice/line-item data could be extracted from any of the "
-                f"{len(images)} page(s) in this document — it does not appear "
-                f"to be an invoice."
+        if _invoice_has_data(invoice):
+            return invoice
+
+        # See `dispense_gemini_extractor.process_pdf` — when every page
+        # failed outright the cause is systemic, and reporting it as "not an
+        # invoice" would permanently fail a valid document with no retry.
+        failed_pages = sum(1 for item in metrics if item.get("failed"))
+        if failed_pages:
+            raise RuntimeError(
+                f"Extraction produced no data and {failed_pages}/{len(images)} page(s) "
+                f"never returned a valid response from the model. This looks like a "
+                f"provider/transport problem (outage, rate limit, or exhausted credit) "
+                f"rather than a problem with the document — retrying."
             )
-        return invoice
+
+        raise NoExtractableDataError(
+            f"No invoice/line-item data could be extracted from any of the "
+            f"{len(images)} page(s) in this document — it does not appear "
+            f"to be an invoice."
+        )
 
 
 def _invoice_has_data(invoice: Invoice) -> bool:

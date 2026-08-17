@@ -22,23 +22,62 @@ def validated_legacy_extract(extractor: Callable[[bytes], dict], file_bytes: byt
 
     medicines = report.get("medicines", [])
     dispenses = [row for medicine in medicines for row in medicine.get("dispenses", [])]
+
+    def _reject(reason: str, **detail: Any) -> None:
+        # Rejection sends the whole document down the paid LLM path, so say
+        # WHY. Without this the fallback is silent and a regression in the
+        # regex extractor is indistinguishable from a genuinely unfamiliar
+        # layout once it is running in production.
+        logger.info(
+            "Legacy layout rejected ({reason}): medicines={medicines} dispenses={dispenses} {detail}",
+            reason=reason,
+            medicines=len(medicines),
+            dispenses=len(dispenses),
+            detail=detail or "",
+        )
+
     if not medicines or not dispenses:
+        _reject("no medicines or no dispense rows parsed")
         return None
-    if any(
-        not _NDC.fullmatch(str(medicine.get("ndc") or ""))
-        or not medicine.get("drug_name")
-        or _HEADER_NOISE.search(str(medicine.get("drug_name")))
-        for medicine in medicines
-    ):
+
+    bad_medicine = next(
+        (
+            medicine
+            for medicine in medicines
+            if not _NDC.fullmatch(str(medicine.get("ndc") or ""))
+            or not medicine.get("drug_name")
+            or _HEADER_NOISE.search(str(medicine.get("drug_name")))
+        ),
+        None,
+    )
+    if bad_medicine is not None:
+        _reject(
+            "malformed medicine",
+            ndc=bad_medicine.get("ndc"),
+            drug_name=(bad_medicine.get("drug_name") or "")[:60],
+        )
         return None
-    if any(not row.get("rx_no") or not row.get("date_filled") for row in dispenses):
+
+    bad_row = next(
+        (row for row in dispenses if not row.get("rx_no") or not row.get("date_filled")), None
+    )
+    if bad_row is not None:
+        _reject(
+            "dispense row missing rx_no/date_filled",
+            rx_no=bad_row.get("rx_no"),
+            date_filled=bad_row.get("date_filled"),
+        )
         return None
+
     # A given rx_no legitimately repeats across refills (same prescription,
     # different `ref` counter and fill date) — only reject when the same
     # (rx_no, ref) pair repeats, which means a row was actually parsed
     # twice by the extractor rather than a genuine refill.
     rx_ref_pairs = [(str(row["rx_no"]), str(row.get("ref"))) for row in dispenses]
     if len(rx_ref_pairs) != len(set(rx_ref_pairs)):
+        seen: set = set()
+        dupe = next((p for p in rx_ref_pairs if p in seen or seen.add(p)), None)
+        _reject("duplicate (rx_no, ref) pair — row parsed twice", pair=dupe)
         return None
 
     # Deliberately no cross-check of parsed row counts against any printed

@@ -6,6 +6,7 @@ import base64
 import copy
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from decimal import Decimal
 from io import BytesIO
 from time import perf_counter
 from typing import Any
@@ -323,12 +324,18 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, d
             n=_MAX_PAGE_ATTEMPTS,
         )
 
+    page_failed = False
     if len(calls) != 1 or calls[0].function.name != TOOL_NAME:
         logger.warning(
             "Page {p} never returned a tool call after {n} attempts — treating as an empty page",
             p=page_number,
             n=_MAX_PAGE_ATTEMPTS,
         )
+        # Distinct from a page that legitimately had nothing on it. If every
+        # page ends up here the cause is systemic (provider outage, rate
+        # limiting, exhausted credit) and must not be reported as "this
+        # isn't a dispense report" — see `process_pdf`.
+        page_failed = True
         page = CompactPage(source_page=page_number)
     else:
         page = CompactPage.model_validate_json(calls[0].function.arguments)
@@ -350,6 +357,7 @@ def _extract_page(image: str, page_number: int, page_count: int) -> tuple[int, d
         "prompt_tokens": getattr(usage, "prompt_tokens", None),
         "completion_tokens": getattr(usage, "completion_tokens", None),
         "cost": getattr(usage, "cost", None) or usage_extra.get("cost"),
+        "failed": page_failed,
     }
     return page_number, page.model_dump(exclude_none=True), metrics
 
@@ -412,7 +420,13 @@ def _merge_pages(pages: list[dict]) -> dict[str, Any]:
         medicine["totals"] = {
             "packs": medicine["totals"].get("packs"),
             "total_cost": medicine["totals"].get("total_cost"),
-            **computed,
+            # `compute_medicine_totals` returns Decimal for the money/qty
+            # sums, which is not JSON serializable. This payload is
+            # published to Kafka by the worker (`kafka_infra/producer.py`
+            # json.dumps), so it must stay JSON-native. Decimals become
+            # strings, matching every other extracted field; `total_rx_count`
+            # is already an int and keeps its type.
+            **{k: (str(v) if isinstance(v, Decimal) else v) for k, v in computed.items()},
         }
 
     return report
@@ -448,13 +462,30 @@ def process_pdf(pdf_bytes: bytes) -> dict[str, Any]:
     has_any_data = bool(report["medicines"]) or any(
         value is not None for value in report["grand_total"].values()
     )
-    if not has_any_data:
-        raise NoExtractableDataError(
-            f"No dispense/medicine data could be extracted from any of the "
-            f"{len(images)} page(s) in this document — it does not appear to "
-            f"be a Drug Dispensed Report."
+    if has_any_data:
+        return report
+
+    # Nothing came back. Before blaming the document, check whether the
+    # pages actually FAILED (no valid tool call after every retry) rather
+    # than legitimately being empty. When every page fails the cause is
+    # systemic — provider outage, rate limiting, exhausted credit — and
+    # calling it "not a Drug Dispensed Report" both misdiagnoses it and,
+    # because that maps to PermanentDocumentError, permanently fails a
+    # perfectly good document with no retry.
+    failed_pages = sum(1 for item in metrics if item.get("failed"))
+    if failed_pages:
+        raise RuntimeError(
+            f"Extraction produced no data and {failed_pages}/{len(images)} page(s) "
+            f"never returned a valid response from the model. This looks like a "
+            f"provider/transport problem (outage, rate limit, or exhausted credit) "
+            f"rather than a problem with the document — retrying."
         )
-    return report
+
+    raise NoExtractableDataError(
+        f"No dispense/medicine data could be extracted from any of the "
+        f"{len(images)} page(s) in this document — it does not appear to "
+        f"be a Drug Dispensed Report."
+    )
 
 
 def dump_tool_schema() -> str:

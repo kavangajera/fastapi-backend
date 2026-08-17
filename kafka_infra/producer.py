@@ -37,7 +37,12 @@ class KafkaProducerService:
             return
         self._producer = AIOKafkaProducer(
             bootstrap_servers=settings.KAFKA_BOOTSTRAP_SERVERS,
-            value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+            # `default=str` mirrors the worker's own DB write
+            # (`kafka_worker/base_worker.py`). Without it, a single
+            # non-JSON-native value anywhere in an extraction payload (a
+            # Decimal, a date) raises TypeError here and kills the whole
+            # job after the extraction has already been paid for.
+            value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
             key_serializer=lambda k: k.encode("utf-8") if k else None,
         )
         try:
