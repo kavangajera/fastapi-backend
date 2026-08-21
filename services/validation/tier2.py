@@ -98,7 +98,8 @@ def _module_a(
                 severity="WARNING",
                 message=(
                     "NDC not present in FDA Drug NDC Directory — may be a medical "
-                    "device, supply, or recently launched product."
+                    "device, supply, a discontinued/delisted product, or a "
+                    "recently launched product."
                 ),
                 medicine_index=mi,
                 ndc=ndc11,
