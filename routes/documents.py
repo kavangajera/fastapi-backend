@@ -373,3 +373,92 @@ async def list_documents(
         DocumentListResponse(documents=docs, total=total),
         "Documents retrieved successfully",
     )
+
+
+# ── DELETE /documents/{doc_key} ─────────────────────────────────────────────
+
+# An extracted-but-unsaved Document is the only thing standing between an
+# abandoned upload and a permanently cluttered review queue: it keeps showing
+# up in `GET /reports/` and `GET /invoices/` (services/pending_documents) until
+# a saved row claims it. Discarding one is a SOFT delete — the parsed JSON and
+# the stored file are the record of what was extracted, so the row is hidden
+# (every ORM SELECT filters `IsDeleted`, see core/async_db), never destroyed.
+#
+# Which saved row would claim this document, by process type. BARCODE has no
+# domain table of its own (its result is spliced into invoice line items by the
+# client), so a barcode scan is always discardable.
+_SAVED_MODEL_NAME: dict[ProcessType, str] = {
+    ProcessType.DISPENSE: "DrugReport",
+    ProcessType.INVOICE: "Invoice",
+}
+
+
+@router.delete(
+    "/{doc_key}",
+    response_model=Response_Schema,
+    summary="Discard an extracted-but-unsaved document (soft delete)",
+    description=(
+        "Soft-deletes the Document row: it disappears from `GET /documents/`, "
+        "from `GET /documents/{doc_key}`, and from the pending-review entries in "
+        "`GET /reports/` and `GET /invoices/`, while the row, the extracted JSON "
+        "and the uploaded file all stay put.\n\n"
+        "Refuses with 409 once the document has been saved into a dispense "
+        "report or an invoice — that saved row is what the document is the "
+        "source for, so it has to be deleted instead. A document still being "
+        "processed can be discarded; the worker drops the job when it can no "
+        "longer find the row."
+    ),
+)
+async def delete_document(
+    doc_key: str,
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    result = await db.execute(select(Document).where(Document.doc_key == doc_key))
+    doc = result.scalar_one_or_none()
+    if not doc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Document '{doc_key}' not found.",
+        )
+    await ensure_pharmacy_access(db, user, doc.medical_store_id)
+    # Deliberately NOT feature-gated, unlike the GET: a store whose plan has
+    # lapsed must still be able to clear its own queue.
+
+    saved_name = _SAVED_MODEL_NAME.get(ProcessType(doc.process_type))
+    if saved_name is not None:
+        from models import DrugReport, Invoice
+
+        saved_model = {"DrugReport": DrugReport, "Invoice": Invoice}[saved_name]
+        saved_id = (
+            await db.execute(
+                select(saved_model.id).where(saved_model.document_id == doc.id).limit(1)
+            )
+        ).scalar_one_or_none()
+        if saved_id is not None:
+            label = "dispense report" if saved_name == "DrugReport" else "invoice"
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "status_code": 409,
+                    "message": (
+                        f"This document is already saved as {label} #{saved_id}. "
+                        f"Delete that {label} instead — the document is its "
+                        "source record."
+                    ),
+                    "data": {"saved_as": saved_name, "saved_id": saved_id},
+                },
+            )
+
+    doc.IsDeleted = True
+    await db.commit()
+
+    logger.info(
+        "Document discarded: doc_key={dk} type={t} status={s} ms_id={ph} user={u}",
+        dk=doc_key,
+        t=doc.process_type,
+        s=doc.status,
+        ph=doc.medical_store_id,
+        u=user.user_id,
+    )
+    return success_response(None, "Document discarded successfully")
