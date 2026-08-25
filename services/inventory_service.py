@@ -17,6 +17,7 @@ emits.
 
 from __future__ import annotations
 
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from loguru import logger
@@ -99,6 +100,7 @@ async def _upsert_delta(
     product_name: str | None,
     last_invoice_id: int | None,
     exp_date: str | None = None,
+    received_date: date | None = None,
 ) -> Decimal:
     """
     `INSERT ... ON DUPLICATE KEY UPDATE` against medicine_inventory.
@@ -106,6 +108,10 @@ async def _upsert_delta(
     Returns the new quantity after the upsert. `exp_date` is only ever set
     from a scanned barcode/QR; a NULL passed here leaves any existing value
     untouched (so a later non-scanned invoice doesn't wipe a known expiry).
+
+    `received_date` follows the same rule and is only passed by the invoice
+    path — a dispense takes stock off the shelf, which is not a receipt, so
+    subtracting must never move the date.
     """
     stmt = mysql_insert(MedicineInventory).values(
         medical_store_id=medical_store_id,
@@ -114,14 +120,37 @@ async def _upsert_delta(
         quantity=delta,
         last_invoice_id=last_invoice_id,
         exp_date=exp_date,
+        received_date=received_date,
     )
     stmt = stmt.on_duplicate_key_update(
         quantity=MedicineInventory.quantity + stmt.inserted.quantity,
         # Keep an existing product_name if we now have None; otherwise prefer the new one.
         product_name=stmt.inserted.product_name,
-        last_invoice_id=stmt.inserted.last_invoice_id,
+        # Only overwrite the pointer when this caller actually has an invoice.
+        # The dispense and reversal paths pass None, and plain assignment made
+        # them NULL a pointer that still referenced a live invoice.
+        last_invoice_id=func.coalesce(
+            stmt.inserted.last_invoice_id, MedicineInventory.last_invoice_id
+        ),
         # Refresh expiry only when this line actually carried a scanned value.
         exp_date=func.coalesce(stmt.inserted.exp_date, MedicineInventory.exp_date),
+        # Same for the receipt date: NULL (a dispense) leaves it alone.
+        received_date=func.coalesce(
+            stmt.inserted.received_date, MedicineInventory.received_date
+        ),
+        # Revive a soft-deleted row instead of writing into it invisibly.
+        # The unique key is (medical_store_id, code) and ignores IsDeleted, so
+        # this UPDATE finds a deleted row and would otherwise add stock to a
+        # record no read can return — the quantity would silently disappear.
+        # Stock moving again is precisely what makes the row live again, and it
+        # resumes from 0 because delete_inventory_row zeroes the balance on the
+        # way out (deliberately: no CASE here has to read IsDeleted, which
+        # would be quietly order-dependent — MySQL evaluates these assignments
+        # in table-column order, not the order written here).
+        # Written at Core level, so the before_flush hook that normally clears
+        # delete_date_at doesn't run here; clear it explicitly.
+        IsDeleted=False,
+        delete_date_at=None,
     )
     await session.execute(stmt)
 
@@ -136,6 +165,43 @@ async def _upsert_delta(
 
 
 # ── public API ──────────────────────────────────────────────────────────────
+
+
+def _parse_received_date(value: str | None) -> date | None:
+    """Best-effort parse of an invoice's printed date into a real date.
+
+    The extractor copies whatever the document shows — "03/04/2026",
+    "3-4-26", "Mar 4 2026" — so this is deliberately permissive and gives up
+    (None) on anything it cannot read rather than guessing. Day-first is not
+    assumed: these are US pharmacy invoices, so 03/04 is March 4th.
+    """
+    if not value or not str(value).strip():
+        return None
+    import dateutil.parser
+
+    try:
+        return dateutil.parser.parse(str(value).strip()).date()
+    except (ValueError, OverflowError, TypeError):
+        return None
+
+
+async def invoice_received_date(session: AsyncSession, invoice_id: int) -> date | None:
+    """The date stock from `invoice_id` should be booked to.
+
+    The invoice's own printed date when it has a readable one, else the day it
+    was uploaded — an invoice always arrives on SOME day, and a NULL here
+    would drop the row out of every date-bounded view.
+    """
+    invoice = (
+        await session.execute(select(Invoice).where(Invoice.id == invoice_id))
+    ).scalar_one_or_none()
+    if invoice is None:
+        return None
+    parsed = _parse_received_date(invoice.invoice_date)
+    if parsed is not None:
+        return parsed
+    created = getattr(invoice, "created_at", None)
+    return created.date() if created is not None else None
 
 
 async def add_invoice_quantities(
@@ -154,6 +220,7 @@ async def add_invoice_quantities(
         select(InvoiceLineItem).where(InvoiceLineItem.invoice_id == invoice_id)
     )
     line_items = list(rows.scalars().all())
+    received = await invoice_received_date(session, invoice_id)
 
     updates: list[dict] = []
     for item in line_items:
@@ -172,12 +239,64 @@ async def add_invoice_quantities(
             last_invoice_id=invoice_id,
             # Only present when this line was enriched from a barcode/QR scan.
             exp_date=item.dm_expiration_date,
+            received_date=received,
         )
         updates.append({"code": code, "delta": str(qty), "new_quantity": str(new_qty)})
 
     await session.flush()
     logger.info(
         "Inventory +invoice: ms_id={ph} invoice_id={iid} touched={n}",
+        ph=medical_store_id,
+        iid=invoice_id,
+        n=len(updates),
+    )
+    return updates
+
+
+async def reverse_invoice_quantities(
+    session: AsyncSession,
+    *,
+    medical_store_id: int,
+    invoice_id: int,
+) -> list[dict]:
+    """
+    For every line item on `invoice_id`, −invoiced_qty from inventory.
+
+    The exact mirror of `add_invoice_quantities`, for deleting an invoice:
+    stock the invoice put on the shelf comes back off it. Quantity is allowed
+    to go negative — the same rule the dispense path already follows — because
+    the goods may well have been dispensed since.
+
+    Must run BEFORE the line items are soft-deleted: it reads them through the
+    ORM, which filters `IsDeleted` rows out automatically.
+    """
+    rows = await session.execute(
+        select(InvoiceLineItem).where(InvoiceLineItem.invoice_id == invoice_id)
+    )
+    line_items = list(rows.scalars().all())
+
+    updates: list[dict] = []
+    for item in line_items:
+        code = _pick_code(item.ndc11, item.upc)
+        if not code:
+            continue
+        qty = _to_decimal(item.invoiced_qty) or _to_decimal(item.order_qty)
+        if qty is None or qty == 0:
+            continue
+        new_qty = await _upsert_delta(
+            session,
+            medical_store_id=medical_store_id,
+            code=code,
+            delta=-qty,
+            product_name=item.description,
+            # Don't re-point the row at the invoice being removed.
+            last_invoice_id=None,
+        )
+        updates.append({"code": code, "delta": str(-qty), "new_quantity": str(new_qty)})
+
+    await session.flush()
+    logger.info(
+        "Inventory -invoice (reverse): ms_id={ph} invoice_id={iid} touched={n}",
         ph=medical_store_id,
         iid=invoice_id,
         n=len(updates),
@@ -331,14 +450,30 @@ async def search_inventory(
     medical_store_id: int,
     q: str | None = None,
     only_negative: bool = False,
+    received_from: date | None = None,
+    received_to: date | None = None,
     skip: int = 0,
     limit: int = 50,
 ) -> tuple[list[MedicineInventory], int]:
     """
     Filtered, paginated inventory. `q` matches code OR product_name.
+
+    `received_from` / `received_to` bound `received_date` — when the stock was
+    last taken in. Rows with no receipt date (added before the column existed,
+    or only ever touched by a dispense) are excluded from a bounded query
+    rather than silently treated as today's: they genuinely aren't known to
+    fall inside the window. Leave both unset for the current stock list.
+
     Returns (rows, total_count).
     """
-    filters = [MedicineInventory.medical_store_id == medical_store_id]
+    filters = [
+        MedicineInventory.medical_store_id == medical_store_id,
+        # Explicit: `total` below is a column-level count, which the global
+        # soft-delete criteria is not guaranteed to reach. Without this a
+        # deleted row could be counted but never listed, and the last page
+        # would render empty.
+        MedicineInventory.IsDeleted.is_(False),
+    ]
     if q:
         like = f"%{q}%"
         filters.append(
@@ -346,6 +481,10 @@ async def search_inventory(
         )
     if only_negative:
         filters.append(MedicineInventory.quantity < 0)
+    if received_from is not None:
+        filters.append(MedicineInventory.received_date >= received_from)
+    if received_to is not None:
+        filters.append(MedicineInventory.received_date <= received_to)
 
     total = (
         await session.execute(select(func.count(MedicineInventory.id)).where(*filters))

@@ -37,6 +37,10 @@ class ParsingError(AuditFields):
     error_message: str | None = None
     retry_count: int
     created_at: datetime
+    # True only in an `include_dismissed=true` response: this entry was
+    # cleared from the report. Always False in the default view, which omits
+    # cleared entries entirely.
+    dismissed: bool = False
 
 
 class ValidationErrorRow(AuditFields):
@@ -51,6 +55,8 @@ class ValidationErrorRow(AuditFields):
     ndc: str
     errors: list[dict] = []
     created_at: datetime
+    # See ParsingError.dismissed.
+    dismissed: bool = False
 
 
 class AuditReportResponse(AuditFields):

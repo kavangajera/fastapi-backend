@@ -15,13 +15,14 @@ DELETE /reports/{report_id}               Delete a report
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
 from core.enums import Feature, ProcessType, UserRole
 from middlewares.auth import auth_incoming_req
-from models import DrugReport, Medicine
+from models import Dispense, DrugReport, Medicine
 from models.pharmacy import Pharmacy
 from schemas.pending_document import PendingDocumentItem
 from schemas.pharmacy_purchase_report import (
@@ -32,6 +33,7 @@ from schemas.pharmacy_purchase_report import (
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
 from services.feature_gate import ensure_feature, entitled_store_ids
+from services.inventory_service import reverse_dispense_quantities
 from services.pending_documents import document_pending_state, fetch_pending_documents
 from services.pharmacy_authz import ensure_pharmacy_access
 
@@ -177,7 +179,12 @@ async def delete_report(
     db: AsyncSession = Depends(get_async_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
-    result = await db.execute(select(DrugReport).where(DrugReport.id == report_id))
+    # Locked for the duration of the transaction. Without it two concurrent
+    # deletes of the same report both read it as live and both run the
+    # inventory reversal, silently adding the dispensed quantities back twice.
+    result = await db.execute(
+        select(DrugReport).where(DrugReport.id == report_id).with_for_update()
+    )
     report = result.scalar_one_or_none()
     if not report:
         raise HTTPException(
@@ -186,6 +193,54 @@ async def delete_report(
         )
     await ensure_pharmacy_access(db, user, report.medical_store_id)
     await ensure_feature(db, report.medical_store_id, Feature.TOP_QUANTITY_DRUG_REPORT)
+
+    # Saving this report drew its quantities OUT of inventory
+    # (services/inventory_service.subtract_dispense_quantities). Deleting it
+    # has to put them back, or the shelf count keeps shrinking every time a
+    # mis-uploaded report is removed. Runs BEFORE the rows are flagged: the
+    # reversal reads medicines/dispenses through the ORM, which filters
+    # soft-deleted rows out automatically.
+    inventory_updates = await reverse_dispense_quantities(
+        db, medical_store_id=report.medical_store_id, drug_report_id=report_id
+    )
+
+    # Soft-delete the children too. The ORM cascade is delete-orphan (a hard
+    # delete), which this path deliberately doesn't use — but leaving the rows
+    # live would keep them visible to everything that queries dispenses
+    # directly. It also matters for re-upload: `uq_dispenses_store_rx_no_active`
+    # is keyed on a generated column that goes NULL once a row is deleted, so
+    # flagging these rows is what actually frees their rx_nos for the corrected
+    # document (see alembic c2d3e4f5a6b7).
+    med_rows = (
+        await db.execute(select(Medicine).where(Medicine.report_id == report_id))
+    ).scalars().all()
+    dispenses_removed = 0
+    for med in med_rows:
+        disp_rows = (
+            await db.execute(select(Dispense).where(Dispense.medicine_id == med.id))
+        ).scalars().all()
+        for disp in disp_rows:
+            disp.IsDeleted = True
+            dispenses_removed += 1
+        med.IsDeleted = True
+
     report.IsDeleted = True
     await db.commit()
-    return success_response(None, "Report deleted successfully")
+
+    logger.info(
+        "Report deleted: report_id={r} ms_id={ph} medicines={m} dispenses={d} inventory_touched={i}",
+        r=report_id,
+        ph=report.medical_store_id,
+        m=len(med_rows),
+        d=dispenses_removed,
+        i=len(inventory_updates),
+    )
+    return success_response(
+        {
+            "report_id": report_id,
+            "medicines_removed": len(med_rows),
+            "dispenses_removed": dispenses_removed,
+            "inventory_updates": inventory_updates,
+        },
+        "Report deleted and inventory restored",
+    )

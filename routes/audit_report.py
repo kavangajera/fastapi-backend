@@ -16,8 +16,10 @@ error-centric, audit-friendly shape.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
-from fastapi import APIRouter, Depends, Path, Query
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,10 +35,32 @@ from schemas.audit_report import (
 )
 from schemas.response_schema import Response_Schema, success_response
 from schemas.system_internal_user_schema import System_Internal_User_Schema
+from services.audit_dismissal_service import (
+    DISMISS_PARSING,
+    DISMISS_VALIDATION,
+    VALID_KINDS,
+    dismiss,
+    fetch_dismissed,
+    restore,
+)
 from services.feature_gate import ensure_feature
 from services.pharmacy_authz import ensure_pharmacy_access
 
 router = APIRouter(tags=["Audit Report"])
+
+
+class AuditDismissRequest(BaseModel):
+    """Which audit rows to clear (or bring back).
+
+    `kind` picks the section; `refs` are that section's identifiers —
+    `doc_key`s for parsing failures, report ids (as strings) for validation
+    rows. Both endpoints take a list so the UI's select-all is one call.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["parsing", "validation"]
+    refs: list[str] = Field(..., min_length=1)
 
 _FAILED_STATUSES = (DocumentStatus.FAILED.value, DocumentStatus.FAILED_PERMANENTLY.value)
 
@@ -55,11 +79,25 @@ async def audit_report(
     ph_id: int = Path(..., description="medical_store_id"),
     date_from: datetime | None = Query(None, description="created_at >= (ISO 8601)"),
     date_to: datetime | None = Query(None, description="created_at <= (ISO 8601)"),
+    include_dismissed: bool = Query(
+        False, description="Also return entries the owner has cleared from this report"
+    ),
     db: AsyncSession = Depends(get_async_db),
     user: System_Internal_User_Schema = Depends(auth_incoming_req),
 ):
     await ensure_pharmacy_access(db, user, ph_id)
     await ensure_feature(db, ph_id, Feature.COMPLIANCE_REPORTS)
+
+    # Entries the owner has cleared. The audit report is derived on every
+    # request, so a cleared row can only be remembered separately — see
+    # models/audit_dismissal. Live dismissals are filtered out below;
+    # `include_dismissed` brings them back so they can be restored.
+    # Always fetched: in the default view it filters cleared entries out, and
+    # with include_dismissed it instead MARKS them, so the UI can badge them
+    # and offer Restore on the cleared ones only.
+    dismissed = await fetch_dismissed(db, ph_id)
+    dismissed_docs = dismissed.get(DISMISS_PARSING, set())
+    dismissed_reports = dismissed.get(DISMISS_VALIDATION, set())
 
     def _between(col):
         conds = []
@@ -95,8 +133,10 @@ async def audit_report(
             delete_date_at=d.delete_date_at,
             updated_at=d.updated_at,
             global_time_at=d.global_time_at,
+            dismissed=d.doc_key in dismissed_docs,
         )
         for d in failed_docs
+        if include_dismissed or d.doc_key not in dismissed_docs
     ]
 
     # ── Force-saved dispense reports + per-row validation errors ─────
@@ -113,6 +153,9 @@ async def audit_report(
 
     validation_errors: list[ValidationErrorRow] = []
     for rep in forced_reports:
+        is_dismissed = str(rep.id) in dismissed_reports
+        if is_dismissed and not include_dismissed:
+            continue
         # `medicines` is lazy="selectin" so it's already loaded.
         for med in rep.medicines:
             if not med.has_errors:
@@ -134,6 +177,7 @@ async def audit_report(
                     delete_date_at=med.delete_date_at,
                     updated_at=med.updated_at,
                     global_time_at=med.global_time_at,
+                    dismissed=is_dismissed,
                 )
             )
 
@@ -181,4 +225,71 @@ async def audit_report(
             validation_errors=validation_errors,
         ),
         "Audit report retrieved successfully",
+    )
+
+
+# ── Dismissals ──────────────────────────────────────────────────────────────
+
+# Clearing an audit row must not destroy what it reports on: a parsing failure
+# IS the document, a validation row IS the force-saved report, and both are the
+# compliance record. So these endpoints record the dismissal and the GET above
+# filters against it — the underlying rows are never touched.
+
+
+@router.post(
+    "/pharmacy/{ph_id}/audit-report/dismiss",
+    response_model=Response_Schema,
+    summary="Clear entries from the audit report (keeps the underlying records)",
+    description=(
+        "Hides the listed entries from `GET /pharmacy/{ph_id}/audit-report`. "
+        "The documents and dispense reports behind them are left completely "
+        "untouched, and `?include_dismissed=true` brings them back into view. "
+        "Idempotent: clearing an already-cleared entry is a no-op."
+    ),
+)
+async def dismiss_audit_entries(
+    ph_id: int = Path(..., description="medical_store_id"),
+    body: AuditDismissRequest = ...,
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.COMPLIANCE_REPORTS)
+    if body.kind not in VALID_KINDS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"status_code": 422, "message": f"Unknown kind '{body.kind}'", "data": None},
+        )
+    changed = await dismiss(
+        db,
+        medical_store_id=ph_id,
+        kind=body.kind,
+        refs=body.refs,
+        user_id=user.user_id,
+    )
+    await db.commit()
+    return success_response(
+        {"kind": body.kind, "dismissed": changed, "requested": len(body.refs)},
+        "Audit entries cleared successfully",
+    )
+
+
+@router.post(
+    "/pharmacy/{ph_id}/audit-report/restore",
+    response_model=Response_Schema,
+    summary="Bring cleared entries back into the audit report",
+)
+async def restore_audit_entries(
+    ph_id: int = Path(..., description="medical_store_id"),
+    body: AuditDismissRequest = ...,
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.COMPLIANCE_REPORTS)
+    restored = await restore(db, medical_store_id=ph_id, kind=body.kind, refs=body.refs)
+    await db.commit()
+    return success_response(
+        {"kind": body.kind, "restored": restored, "requested": len(body.refs)},
+        "Audit entries restored successfully",
     )

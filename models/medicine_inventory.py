@@ -14,10 +14,11 @@ quantity from the matching row. The UNIQUE constraint backs the
     - a UPC fallback for invoice lines we can't normalize to NDC11.
 """
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Date,
     DateTime,
     ForeignKey,
     Integer,
@@ -53,6 +54,15 @@ class MedicineInventory(AuditMixin, Base):
     # Expiry shown in the UI ONLY when it came from a scanned barcode/QR
     # (InvoiceLineItem.dm_expiration_date). NULL when never scanned.
     exp_date: Mapped[str | None] = mapped_column(String(12), nullable=True)
+
+    # When this stock was last received — the date printed on the invoice that
+    # added it, falling back to the day that invoice was uploaded. A real DATE
+    # (not the free-text the extractor reads) so the inventory list can be
+    # filtered by range; the parse happens once, on the way in.
+    #
+    # NULL on rows that predate this column and on rows only ever touched by a
+    # dispense: subtracting stock is not a receipt, so it never moves the date.
+    received_date: Mapped[date | None] = mapped_column(Date, nullable=True, index=True)
 
     # Signed Decimal — quantity can go negative when dispense outpaces
     # known invoices. The save routes never reject; the UI surfaces it.

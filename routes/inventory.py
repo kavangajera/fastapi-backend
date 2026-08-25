@@ -11,12 +11,17 @@ barcode/QR (`InvoiceLineItem.dm_expiration_date`); otherwise the field is null.
 
 from __future__ import annotations
 
+from datetime import date
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.async_db import get_async_db
 from core.enums import Feature, UserRole
 from middlewares.auth import auth_incoming_req
+from models import MedicineInventory
 from schemas.inventory import (
     InventoryAdjustRequest,
     InventoryDetail,
@@ -48,6 +53,7 @@ def _to_row(r) -> InventoryRow:
         status=derive_stock_status(r.quantity),
         location=r.location,
         exp_date=r.exp_date,
+        received_date=r.received_date,
         last_invoice_id=r.last_invoice_id,
         updated_at=r.updated_at,
         record_Identifier=r.record_Identifier,
@@ -68,6 +74,12 @@ async def list_inventory(
     ph_id: int = Path(..., description="medical_store_id"),
     q: str | None = Query(None, description="Search code or product name"),
     only_negative: bool = Query(False, description="Only rows with negative stock"),
+    received_from: date | None = Query(
+        None, description="Only stock received on/after this date (YYYY-MM-DD)"
+    ),
+    received_to: date | None = Query(
+        None, description="Only stock received on/before this date (YYYY-MM-DD)"
+    ),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_async_db),
@@ -76,7 +88,14 @@ async def list_inventory(
     await ensure_pharmacy_access(db, user, ph_id)
     await ensure_feature(db, ph_id, Feature.INVENTORY_LITE)
     rows, total = await search_inventory(
-        db, medical_store_id=ph_id, q=q, only_negative=only_negative, skip=skip, limit=limit
+        db,
+        medical_store_id=ph_id,
+        q=q,
+        only_negative=only_negative,
+        received_from=received_from,
+        received_to=received_to,
+        skip=skip,
+        limit=limit,
     )
     return success_response(
         InventoryListResponse(
@@ -154,6 +173,77 @@ async def update_inventory(
     await db.commit()
     await db.refresh(row)
     return success_response(_to_row(row), "Inventory updated successfully")
+
+
+@router.delete(
+    "/pharmacy/{ph_id}/inventory/{code}",
+    response_model=Response_Schema,
+    summary="Remove an inventory row (owner/admin, soft delete)",
+    description=(
+        "Soft-deletes one inventory row: it leaves the stock list and every "
+        "other read, but the record stays in the database.\n\n"
+        "This does NOT touch the invoices or dispense reports that built the "
+        "quantity — it removes the running total only, and zeroes it, so a "
+        "later invoice for the same code starts the row again from zero. To "
+        "correct a quantity without losing the row, PATCH it instead."
+    ),
+)
+async def delete_inventory_row(
+    ph_id: int = Path(..., description="medical_store_id"),
+    code: str = Path(..., description="Inventory code (NDC11 or UPC)"),
+    db: AsyncSession = Depends(get_async_db),
+    user: System_Internal_User_Schema = Depends(auth_incoming_req),
+):
+    await ensure_pharmacy_access(db, user, ph_id)
+    await ensure_feature(db, ph_id, Feature.INVENTORY_LITE)
+    if user.role not in (UserRole.PHARMACY_OWNER, UserRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "status_code": 403,
+                "message": "Only owners can remove inventory rows",
+                "data": None,
+            },
+        )
+
+    row = (
+        await db.execute(
+            select(MedicineInventory).where(
+                MedicineInventory.medical_store_id == ph_id,
+                MedicineInventory.code == code,
+            )
+        )
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"status_code": 404, "message": f"No inventory row for code '{code}'", "data": None},
+        )
+
+    quantity_at_delete = str(row.quantity)
+    # Zero the balance as well as hiding the row. The unique key
+    # (medical_store_id, code) ignores IsDeleted, so a later invoice for the
+    # same code UPSERTs into this very row and revives it — resuming from the
+    # balance the user just discarded would undo the delete. The pre-delete
+    # number is preserved in the activity log below.
+    row.quantity = Decimal("0")
+    row.IsDeleted = True
+    await log_activity(
+        db,
+        medical_store_id=ph_id,
+        actor=user,
+        action="INVENTORY_DELETED",
+        entity_type="inventory",
+        entity_id=row.id,
+        summary=f"Removed inventory row for {code} ({row.product_name or '—'})",
+        search_blob=f"{code} {row.product_name or ''}",
+        meta={"code": code, "quantity_at_delete": quantity_at_delete},
+    )
+    await db.commit()
+    return success_response(
+        {"code": code, "quantity_at_delete": quantity_at_delete},
+        "Inventory row removed successfully",
+    )
 
 
 @router.get(

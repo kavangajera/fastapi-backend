@@ -28,6 +28,7 @@ from routes.reconciliation import router as reconciliation_router
 from routes.refills import router as refills_router
 from routes.stripe_webhook import router as stripe_webhook_router
 from routes.subscription import router as subscription_router
+from routes.temperature_devices import router as temperature_devices_router
 from routes.temperature_logs import router as temperature_logs_router
 from schemas.response_schema import success_response
 
@@ -119,8 +120,20 @@ Obtain an access token by calling `POST /user/login`. Use `GET /user/renew-acces
             "description": "Per-medical-store running stock, keyed by (medical_store_id, ndc11 or upc).",
         },
         {
+            "name": "Temperature Devices",
+            "description": (
+                "Register temperature loggers against a pharmacy, and drive the "
+                "logging lifecycle: a device exchanges its secret for a session "
+                "token, renews that token with the same secret when it expires, "
+                "and stops logging (which invalidates the token) when done."
+            ),
+        },
+        {
             "name": "Temperature Logs",
-            "description": "Basic connectivity surface for external temperature devices to store and read back temperature logs.",
+            "description": (
+                "Registered devices push batches of readings with their session "
+                "token; pharmacy users read them back, scoped to their store."
+            ),
         },
     ],
     lifespan=lifespan,
@@ -196,6 +209,7 @@ app.include_router(monitor_router)
 app.include_router(subscription_router)
 app.include_router(admin_subscription_router)
 app.include_router(reconciliation_router)
+app.include_router(temperature_devices_router)
 app.include_router(temperature_logs_router)
 app.include_router(stripe_webhook_router)
 app.include_router(ownership_transfer_router)

@@ -6,7 +6,7 @@ Strict response schemas for the inventory GET endpoints.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -23,6 +23,10 @@ class InventoryRow(AuditFields):
     status: str  # derived stock status: In stock / Low stock / Out of stock
     location: str | None = None  # physical shelf/bin
     exp_date: str | None = None  # only set when a barcode/QR was scanned
+    # When the stock was last received: the adding invoice's own date, or the
+    # day it was uploaded. NULL on rows that predate the column and on rows
+    # only ever touched by a dispense.
+    received_date: date | None = None
     last_invoice_id: int | None = None
     updated_at: datetime | None = None
 

@@ -15,6 +15,7 @@ from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
+    Computed,
     JSON,
     Boolean,
     ForeignKey,
@@ -180,8 +181,26 @@ class Dispense(AuditMixin, Base):
     is_partial: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     extraction_warnings: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # Uniqueness has to apply to LIVE rows only. A plain
+    # UNIQUE(medical_store_id, rx_no) keeps reserving the rx_no of a
+    # soft-deleted dispense, so deleting a report and re-uploading the
+    # corrected version died on a duplicate-key IntegrityError — while the
+    # app-level pre-check (which filters IsDeleted) waved it through.
+    #
+    # MySQL has no partial indexes, so the standard workaround: a stored
+    # generated column that is the rx_no while the row is live and NULL once
+    # it is deleted. MySQL allows unlimited NULLs in a unique index, so any
+    # number of deleted rows can share an rx_no while live ones stay unique.
+    rx_no_active: Mapped[str | None] = mapped_column(
+        String(20),
+        Computed("IF(`IsDeleted` = 0, `rx_no`, NULL)", persisted=True),
+        nullable=True,
+    )
+
     __table_args__ = (
-        UniqueConstraint("medical_store_id", "rx_no", name="uq_dispenses_store_rx_no"),
+        UniqueConstraint(
+            "medical_store_id", "rx_no_active", name="uq_dispenses_store_rx_no_active"
+        ),
     )
 
     medicine: Mapped["Medicine"] = relationship("Medicine", back_populates="dispenses")

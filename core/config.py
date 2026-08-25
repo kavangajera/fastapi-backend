@@ -10,6 +10,13 @@ class Settings(BaseSettings):
     ALGORITHM: str
     ACCESS_TOKEN_EXPIRE_MINUTES: int
     REFRESH_TOKEN_EXPIRE_DAYS: int
+    # Carried in .env from an earlier provider-switch design. Nothing reads it
+    # today — extraction is configured entirely by the OPENROUTER_* settings
+    # below — but Settings is `extra="forbid"`, so leaving it undeclared makes
+    # the whole app fail to start with `extra_forbidden` on any .env that
+    # still lists it. Declared (and ignored) rather than silently dropped.
+    PROVIDER: str | None = None
+
     OPENROUTER_API_KEY: str = ""
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
     OPENROUTER_MODEL: str = "google/gemini-2.5-flash"
@@ -124,6 +131,22 @@ class Settings(BaseSettings):
     # Set the limit to 0 to disable.
     SIGNUP_RATE_LIMIT_PER_EMAIL: int = 15
     SIGNUP_RATE_LIMIT_WINDOW_SECONDS: int = 900
+
+    # ── Temperature device logging ──────────────────────────────────
+    # Device session tokens are deliberately longer-lived than a user access
+    # token: an unattended logger should not have to re-authenticate every
+    # few minutes. It re-authenticates with its secret when this elapses.
+    TEMPERATURE_DEVICE_TOKEN_EXPIRE_MINUTES: int = 720  # 12 h
+    # Minimum length accepted for a caller-supplied device secret. Secrets we
+    # generate ourselves are far longer (32 random bytes, url-safe).
+    TEMPERATURE_DEVICE_SECRET_MIN_LENGTH: int = 12
+    # Cap on readings accepted in a single push, so one malformed batch can
+    # not blow up a transaction.
+    TEMPERATURE_LOG_MAX_BATCH_SIZE: int = 500
+    # Safe storage range used to derive a reading's status when the device
+    # does not report one itself (matches the 2-8 °C fridge band in the UI).
+    TEMPERATURE_SAFE_MIN_C: float = 2.0
+    TEMPERATURE_SAFE_MAX_C: float = 8.0
 
     # ── Pharmacy ownership transfer ─────────────────────────────────
     # How long a pending transfer request stays actionable by the new owner.

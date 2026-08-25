@@ -54,8 +54,16 @@ async def fetch_pending_documents(
     if not medical_store_ids:
         return []
 
+    # Deliberately against the raw TABLE, not the ORM entity: the global
+    # soft-delete filter (core/async_db) would otherwise stop a deleted report
+    # /invoice from claiming its document, so deleting a saved record would
+    # resurrect its upload in the review queue as "awaiting review" — the
+    # user deletes a row and the work reappears somewhere else.
+    saved_table = saved_model.__table__
     not_saved = ~(
-        select(saved_model.id).where(saved_model.document_id == Document.id).exists()
+        select(saved_table.c.id)
+        .where(saved_table.c.document_id == Document.id)
+        .exists()
     )
 
     stmt = (

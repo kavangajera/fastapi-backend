@@ -129,7 +129,13 @@ async def save_dispense_report(
     report_data = body.model_dump(mode="json")
     granted = set(sub.plan.features or []) if sub and sub.plan else None
     tier1 = validate_tier1(report_data, granted=granted)
-    validation = await validate_tier2(db, report_data, tier1_report=tier1, granted=granted)
+    validation = await validate_tier2(
+        db,
+        report_data,
+        tier1_report=tier1,
+        granted=granted,
+        medical_store_id=body.medical_store_id,
+    )
 
     # Block only when there are errors AND the owner has not opted to force-save.
     if validation.summary.blocking and not body.force_save:
@@ -365,7 +371,17 @@ async def update_dispense_report(
     report_data = body.model_dump(mode="json")
     granted = set(sub.plan.features or []) if sub.plan is not None else None
     tier1 = validate_tier1(report_data, granted=granted)
-    validation = await validate_tier2(db, report_data, tier1_report=tier1, granted=granted)
+    validation = await validate_tier2(
+        db,
+        report_data,
+        tier1_report=tier1,
+        granted=granted,
+        # No `medical_store_id`, so Module I (stock on hand) is skipped:
+        # this report's quantities are ALREADY subtracted from inventory,
+        # so a fully-dispensed drug legitimately sits at 0 here and the
+        # check would block every correction to it. It belongs on the
+        # create path, where 0 really does mean "never purchased".
+    )
 
     if validation.summary.blocking and not body.force_save:
         logger.info(
@@ -588,7 +604,17 @@ async def patch_dispenses(
     # 4. Run Tier 1 and Tier 2 validation on the filtered subset
     granted = set(sub.plan.features or []) if sub.plan is not None else None
     tier1 = validate_tier1(filtered_report_data, granted=granted)
-    validation = await validate_tier2(db, filtered_report_data, tier1_report=tier1, granted=granted)
+    validation = await validate_tier2(
+        db,
+        filtered_report_data,
+        tier1_report=tier1,
+        granted=granted,
+        # No `medical_store_id`, so Module I (stock on hand) is skipped:
+        # this report's quantities are ALREADY subtracted from inventory,
+        # so a fully-dispensed drug legitimately sits at 0 here and the
+        # check would block every correction to it. It belongs on the
+        # create path, where 0 really does mean "never purchased".
+    )
 
     if validation.summary.blocking and not body.force_save:
         logger.info(

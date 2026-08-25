@@ -49,5 +49,11 @@ async def validate_dispense(
     report_data = body.model_dump(mode="json")
     granted = set(sub.plan.features or []) if sub.plan is not None else None
     tier1 = validate_tier1(report_data, granted=granted)
-    report = await validate_tier2(db, report_data, tier1_report=tier1, granted=granted)
+    report = await validate_tier2(
+        db,
+        report_data,
+        tier1_report=tier1,
+        granted=granted,
+        medical_store_id=body.medical_store_id,
+    )
     return success_response(report, "Validation completed")

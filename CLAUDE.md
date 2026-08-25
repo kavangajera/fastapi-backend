@@ -96,6 +96,55 @@ Consumer groups follow the same pattern: `<type>-workers`, `<type>-retry-workers
 - Each API instance joins `processing-results` with a **unique** consumer group (`api-results-<uuid8>`) and `auto_offset_reset="latest"` — every instance sees every result and resolves only the `doc_key`s it's locally awaiting. This is broadcast-by-design; don't try to share a group.
 - Started/stopped in the FastAPI `lifespan`. Kafka being unavailable at startup is logged as a warning, not fatal — but `/documents/process` will then 503.
 
+### Temperature logging (device secret → session token)
+
+Read this before touching `routes/temperature_devices.py`, `routes/temperature_logs.py`,
+`services/temperature_device_service.py`, or `middlewares/device_auth.py`.
+
+Loggers are **not** users. They authenticate with a per-device secret and are
+issued their own JWT scope, so a user token can never push readings and a device
+token can never read the dashboard.
+
+**Secrets** (`temperature_device`) are stored two ways on purpose:
+`secret_lookup` is a SHA-256 hex digest — deterministic, uniquely indexed, and
+the only way to *find* a device from a presented secret, since the Argon2
+`secret_hash` that actually authenticates it is salted and unsearchable. A
+generated secret is returned exactly once, in the registration response.
+
+**Sessions** (`temperature_device_session`) span start-logging → stop-logging and
+outlive individual tokens. `current_jti` is the revocation switch: a token is
+honoured only while its `jti` still equals the session's `current_jti`. So
+minting a token revokes the previous one, and stopping the session (which NULLs
+the column) revokes the live one immediately. **Don't add a second live token per
+session** — that guarantee is what "stop logging invalidates the token" rests on.
+
+Lifecycle, all keyed by the secret:
+
+```
+POST /temperature-devices/logging/start   → opens a session (or resumes the open one) + token
+POST /temperature-devices/logging/token   → replacement token, SAME session; 409 if none open
+POST /temperature-devices/logging/stop    → session closed, token dead; idempotent
+POST /temperature-logs                    → Bearer <device token>, body is a bare JSON array
+```
+
+Two things differ from the rest of the codebase and are deliberate:
+
+- `create_device_token` in `core/security_schemes.py` sets the standard **`exp`**
+  claim, not the `expire` claim `create_access_token` uses. python-jose only
+  enforces `exp`, so this is what actually makes device tokens expire — the
+  re-authenticate-with-the-secret step depends on it.
+- The device-facing endpoints are **not** feature-gated. A lapsed subscription
+  should stop a pharmacy reading its data (the user-facing routes do gate on
+  `Feature.TEMP_MONITORING_ALERTS`), not silently strand a deployed fridge logger.
+
+Readings keep `raw_payload` — the reading object verbatim, including keys we
+don't model. Inbound field names are forgiving (`temp`/`value`/`temperature`,
+`time`/`timestamp`/`recorded_at`) because firmware naming varies. `status` is
+derived from `TEMPERATURE_SAFE_MIN_C`/`MAX_C` when the device doesn't send one.
+
+`scripts/temp_device_simulator.py` drives the whole flow (including token renewal
+on a 401) against a running API, so no hardware is needed to test it.
+
 ### Models & migrations
 
 - `models/__init__.py` re-exports every model. `alembic/env.py` does `from models import *` so any model not registered here is invisible to `--autogenerate`. **When you add a model, add it to `models/__init__.py` or migrations will silently miss it.**

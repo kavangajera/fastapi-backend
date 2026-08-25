@@ -7,9 +7,12 @@ grand-total recompute, field sanity).
 
 Public entry points:
     validate_tier1(report_data)                      → no external calls
-    validate_tier2(session, report_data, tier1_report=None)
-                                                     → adds FDA-dependent
-                                                       alerts A/B/C
+    validate_tier2(session, report_data, tier1_report=None,
+                   medical_store_id=None)            → adds FDA-dependent
+                                                       alerts A/B/C, plus
+                                                       Module I (stock on
+                                                       hand) when a store id
+                                                       is supplied
 """
 
 from typing import Any

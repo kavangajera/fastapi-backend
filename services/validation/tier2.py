@@ -30,9 +30,11 @@ from decimal import Decimal, InvalidOperation
 from typing import Any
 
 from loguru import logger
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
+from models.medicine_inventory import MedicineInventory
 from schemas.validation import Alert, ValidationReport
 from services.validation.ndc_cache import get_or_fetch
 from services.validation.plan_gate import has, plan_locked_alert
@@ -262,11 +264,114 @@ def _module_d(mi: int, ndc11: str, med: dict, alerts: list[Alert]) -> None:
             )
 
 
+async def _module_i(
+    session: AsyncSession,
+    medical_store_id: int,
+    medicines: list[dict],
+    alerts: list[Alert],
+) -> None:
+    """Module I — stock on hand, one alert per medicine.
+
+    A dispense drawn against a drug the store has no stock record for (or a
+    row sitting at zero) means the purchase side is missing: the invoice that
+    brought it in was never uploaded, or came in under a different NDC. Saving
+    anyway is legitimate — it just drives the row negative — so this blocks the
+    save the same way every other ERROR does and clears with force-save.
+
+    Ungated on purpose: unlike Modules A–H this runs on every plan.
+    """
+    codes = {
+        code
+        for med in medicines
+        if (code := _normalize_inventory_code(med.get("ndc")))
+    }
+    if not codes:
+        return
+
+    rows = await session.execute(
+        select(MedicineInventory.code, MedicineInventory.quantity).where(
+            MedicineInventory.medical_store_id == medical_store_id,
+            MedicineInventory.code.in_(codes),
+            # Explicit rather than relying on the global soft-delete loader
+            # criteria, which is documented for entity loads — this is a
+            # column-only select, and a deleted stock row must read as "no
+            # inventory" here, matching what every list endpoint shows.
+            MedicineInventory.IsDeleted.is_(False),
+        )
+    )
+    on_hand: dict[str, Decimal] = {code: qty for code, qty in rows.all()}
+
+    for mi, med in enumerate(medicines):
+        code = _normalize_inventory_code(med.get("ndc"))
+        if not code:
+            continue  # FIELD already flagged MALFORMED_NDC
+        quantity = on_hand.get(code)
+        if quantity is None:
+            alerts.append(
+                Alert(
+                    module="I",
+                    code="NO_INVENTORY_FOR_DISPENSE",
+                    severity="ERROR",
+                    message=(
+                        "No inventory on hand for this NDC — can't find inventory "
+                        "for this dispense."
+                    ),
+                    medicine_index=mi,
+                    ndc=code,
+                    field="ndc",
+                    actual=med.get("drug_name") or "",
+                    expected="a stocked NDC",
+                    suggestion=(
+                        "Upload the invoice that brought this drug in, or check "
+                        "the NDC — nothing was ever received under this code."
+                    ),
+                )
+            )
+        elif quantity <= 0:
+            alerts.append(
+                Alert(
+                    module="I",
+                    code="NO_INVENTORY_FOR_DISPENSE",
+                    severity="ERROR",
+                    message=(
+                        f"Inventory for this NDC is {quantity} — can't find "
+                        "inventory for this dispense."
+                    ),
+                    medicine_index=mi,
+                    ndc=code,
+                    field="ndc",
+                    actual=str(quantity),
+                    expected="> 0",
+                    suggestion=(
+                        "Upload the purchase invoice for this drug before "
+                        "dispensing it, or correct the stock count."
+                    ),
+                )
+            )
+
+
+def _normalize_inventory_code(ndc: Any) -> str | None:
+    """The inventory key for a dispense's NDC.
+
+    Delegates to the very function the inventory writer uses
+    (`subtract_dispense_quantities` → `_normalize_ndc`), so Module I looks up
+    exactly the code the stock is keyed under. A local rule here would drift:
+    an 11-digit check on the raw string skips hyphenated NDCs like
+    "12345-6789-01", which the writer happily normalizes and tracks — the
+    check would silently pass on rows that really do have a stock row.
+    """
+    from services.inventory_service import _normalize_ndc
+
+    code = (str(ndc) if ndc is not None else "").strip()
+    return _normalize_ndc(code) if code else None
+
+
 async def validate_tier2(
     session: AsyncSession,
     report_data: dict,
     tier1_report: ValidationReport | None = None,
     granted: set[str] | None = None,
+    medical_store_id: int | None = None,
 ) -> ValidationReport:
     """
     Tier-1 + FDA-dependent checks merged into one ValidationReport.
@@ -277,6 +382,10 @@ async def validate_tier2(
     `granted` = the store's ``Plan.features`` flag set (``None`` → run all).
     Modules A/B/C are gated per plan; when none are granted the FDA lookup is
     skipped entirely (saving ~1–2 s/NDC). Skipped modules emit ``PLAN_LOCKED``.
+
+    `medical_store_id` enables Module I (stock on hand), which is ungated —
+    every plan gets it. Omit it (e.g. the worker's plan-less preview) and the
+    check is simply skipped rather than guessed at.
     """
     if tier1_report is None:
         from services.validation.tier1 import validate_tier1
@@ -321,6 +430,12 @@ async def validate_tier2(
             if need_c:
                 _module_c(mi, ndc, med, cache_row, alerts)
             _module_d(mi, ndc, med, alerts)
+
+    # Module I — stock on hand. Outside the A/B/C block on purpose: it needs no
+    # FDA lookup and no plan flag, so it runs even when every gated module is
+    # locked.
+    if medical_store_id is not None:
+        await _module_i(session, medical_store_id, medicines, alerts)
 
     # One lock marker per module the plan doesn't include.
     if not need_a:

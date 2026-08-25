@@ -34,6 +34,28 @@ class OwnershipTransferStatus(str, Enum):
     EXPIRED = "EXPIRED"
 
 
+class TemperatureSessionStatus(str, Enum):
+    """Lifecycle of one temperature-device *logging session*.
+
+    A session spans the whole "start logging" → "stop logging" window, which
+    may outlive several tokens: the device re-authenticates with its secret
+    whenever a token expires and the session keeps running. Only ACTIVE
+    sessions accept pushes, and only the session's *current* token is honoured
+    (see ``TemperatureDeviceSession.current_jti``).
+    """
+
+    ACTIVE = "ACTIVE"
+    STOPPED = "STOPPED"  # explicitly ended by the device or the pharmacy
+
+
+class TemperatureReadingStatus(str, Enum):
+    """Derived band for a reading when the device does not report its own."""
+
+    NORMAL = "Normal"
+    LOW = "Low"
+    HIGH = "High"
+
+
 class PlanCode(str, Enum):
     """Subscription plan tiers (QueueRx Pricing Reference v2).
 

@@ -432,7 +432,15 @@ async def delete_document(
         saved_model = {"DrugReport": DrugReport, "Invoice": Invoice}[saved_name]
         saved_id = (
             await db.execute(
-                select(saved_model.id).where(saved_model.document_id == doc.id).limit(1)
+                select(saved_model.id)
+                .where(
+                    saved_model.document_id == doc.id,
+                    # Explicit for the same reason as above, and load-bearing
+                    # here: once the report/invoice is deleted the document is
+                    # unclaimed and must become discardable.
+                    saved_model.IsDeleted.is_(False),
+                )
+                .limit(1)
             )
         ).scalar_one_or_none()
         if saved_id is not None:
