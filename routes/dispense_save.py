@@ -128,13 +128,15 @@ async def save_dispense_report(
     # ── Validation gate (micro-gated by the store's plan) ───────────
     report_data = body.model_dump(mode="json")
     granted = set(sub.plan.features or []) if sub and sub.plan else None
-    tier1 = validate_tier1(report_data, granted=granted)
+    disabled = set(body.disabled_modules or [])
+    tier1 = validate_tier1(report_data, granted=granted, disabled_modules=disabled)
     validation = await validate_tier2(
         db,
         report_data,
         tier1_report=tier1,
         granted=granted,
         medical_store_id=body.medical_store_id,
+        disabled_modules=disabled,
     )
 
     # Block only when there are errors AND the owner has not opted to force-save.
@@ -370,7 +372,8 @@ async def update_dispense_report(
     # ── Validation gate ─────────────────────────────────────────────
     report_data = body.model_dump(mode="json")
     granted = set(sub.plan.features or []) if sub.plan is not None else None
-    tier1 = validate_tier1(report_data, granted=granted)
+    disabled = set(body.disabled_modules or [])
+    tier1 = validate_tier1(report_data, granted=granted, disabled_modules=disabled)
     validation = await validate_tier2(
         db,
         report_data,
@@ -381,6 +384,7 @@ async def update_dispense_report(
         # so a fully-dispensed drug legitimately sits at 0 here and the
         # check would block every correction to it. It belongs on the
         # create path, where 0 really does mean "never purchased".
+        disabled_modules=disabled,
     )
 
     if validation.summary.blocking and not body.force_save:
@@ -603,7 +607,8 @@ async def patch_dispenses(
 
     # 4. Run Tier 1 and Tier 2 validation on the filtered subset
     granted = set(sub.plan.features or []) if sub.plan is not None else None
-    tier1 = validate_tier1(filtered_report_data, granted=granted)
+    disabled = set(body.disabled_modules or [])
+    tier1 = validate_tier1(filtered_report_data, granted=granted, disabled_modules=disabled)
     validation = await validate_tier2(
         db,
         filtered_report_data,
@@ -614,6 +619,7 @@ async def patch_dispenses(
         # so a fully-dispensed drug legitimately sits at 0 here and the
         # check would block every correction to it. It belongs on the
         # create path, where 0 really does mean "never purchased".
+        disabled_modules=disabled,
     )
 
     if validation.summary.blocking and not body.force_save:

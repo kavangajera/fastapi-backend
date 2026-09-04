@@ -17,6 +17,12 @@ from schemas.save_invoice import InventoryUpdate
 from schemas.validation import ValidationReport
 from services.ndc_utils import to_ndc11
 
+# Module letters a caller may suppress via `disabled_modules`. "FIELD" is
+# deliberately excluded — its ERRORs (malformed/duplicate NDC) protect the
+# inventory-subtraction math on save, independent of any paid feature or
+# per-report preference (see services/validation/tier1.py::validate_tier1).
+_KNOWN_DISABLABLE_MODULES = {"A", "B", "C", "D", "E", "F", "G", "H"}
+
 
 class DispensePharmacyMeta(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -140,6 +146,22 @@ class DispenseSaveRequest(AuditInputFields):
     # scratch on every submit, so any embedded report is just a stale
     # echo of the prior run.
     validation: Any | None = None
+
+    # Per-request opt-out of specific alert modules/categories (e.g. a
+    # pharmacy that doesn't want pack-size reconciliation to "pop" on this
+    # report). Suppresses both the check itself and its PLAN_LOCKED marker.
+    # Request-time only — not a persisted preference. See plan_gate.py's
+    # `_MODULE_LABEL` for the human-readable name of each letter.
+    disabled_modules: list[str] | None = None
+
+    @field_validator("disabled_modules")
+    @classmethod
+    def _validate_disabled_modules(cls, value: list[str] | None) -> list[str] | None:
+        if value:
+            unknown = set(value) - _KNOWN_DISABLABLE_MODULES
+            if unknown:
+                raise ValueError(f"Unknown module(s) in disabled_modules: {sorted(unknown)}")
+        return value
 
 
 class DispensePatchLineInput(BaseModel):

@@ -21,6 +21,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+from decimal import Decimal, InvalidOperation
 
 from loguru import logger
 
@@ -68,6 +69,46 @@ def _is_unit_of_use(dosage_form: str | None, package_description: str | None) ->
     return any(k in hay for k in _UOU_KEYWORDS)
 
 
+_PACK_SEG_RE = re.compile(
+    r"^\s*(\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z,\-\s]*?)\s+in\s+\d+(?:\.\d+)?\s+[A-Za-z].*$",
+    re.IGNORECASE,
+)
+
+
+def parse_pack_size(package_description: str | None) -> tuple[Decimal, str] | None:
+    """Best-effort numeric pack-size extraction from an FDA `package_description`.
+
+    FDA package descriptions look like "<N> <UNIT> in <N> <CONTAINER>" for a
+    simple package (e.g. "120 SPRAY, METERED in 1 BOTTLE" -> (120, "SPRAY,
+    METERED")), or a compound "<outer> / <inner>" shape for injectables
+    (e.g. "1 VIAL, SINGLE-DOSE in 1 CARTON / 8.5 mL in 1 VIAL, SINGLE-DOSE").
+    For a compound description the LAST "/"-delimited segment is the
+    fill-quantity-per-immediate-container line, which is the number that
+    actually matters for whole-multiple reconciliation (e.g. 8.5 mL/vial —
+    a legitimate non-integer "pack size"). For a simple description the
+    only segment is used directly.
+
+    Returns (qty, unit_noun) or None whenever the shape doesn't confidently
+    match — this never guesses at a number.
+    """
+    if not package_description:
+        return None
+    segments = [s.strip() for s in package_description.split("/") if s.strip()]
+    if not segments:
+        return None
+    target = segments[-1]
+    m = _PACK_SEG_RE.match(target)
+    if not m:
+        return None
+    try:
+        qty = Decimal(m.group(1))
+    except InvalidOperation:
+        return None
+    if qty <= 0:
+        return None
+    return qty, m.group(2).strip().rstrip(",")
+
+
 def _normalize_fda(payload: dict | None, ndc11: str, matched: str | None) -> dict:
     """Project an FDA result dict into our cache row shape."""
     if not payload:
@@ -86,10 +127,24 @@ def _normalize_fda(payload: dict | None, ndc11: str, matched: str | None) -> dic
             "is_unit_of_use": False,
             "found_in_fda": False,
             "raw_payload": None,
+            "labeler_name": None,
+            "strength_text": None,
+            "pack_size_qty": None,
+            "pack_size_uom": None,
         }
     packaging = (payload.get("packaging") or [{}])[0]
     pkg_desc = packaging.get("description")
     df = payload.get("dosage_form")
+    pack_size = parse_pack_size(pkg_desc)
+    active_ingredients = payload.get("active_ingredients") or []
+    strength_text = (
+        ", ".join(
+            f"{ai.get('name', '')} {ai.get('strength', '')}".strip()
+            for ai in active_ingredients
+            if ai.get("name") or ai.get("strength")
+        )
+        or None
+    )
     return {
         "ndc11": ndc11,
         "matched_package_ndc": matched,
@@ -109,6 +164,10 @@ def _normalize_fda(payload: dict | None, ndc11: str, matched: str | None) -> dic
         "is_unit_of_use": _is_unit_of_use(df, pkg_desc),
         "found_in_fda": True,
         "raw_payload": json.dumps(payload, ensure_ascii=False),
+        "labeler_name": payload.get("labeler_name") or None,
+        "strength_text": strength_text,
+        "pack_size_qty": pack_size[0] if pack_size else None,
+        "pack_size_uom": pack_size[1] if pack_size else None,
     }
 
 

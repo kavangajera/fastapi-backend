@@ -51,6 +51,7 @@ class PerPatientTotal(BaseModel):
     model_config = ConfigDict(extra="forbid")
     patient_key: str
     patient_label: str  # last-name initial + first initial — light de-id for UI
+    insurance: str | None = None  # canonical ins_code — rows never blend differing insurance
     rx_count: int
     total_price: str
     total_ins_paid: str
@@ -68,9 +69,27 @@ class ValidationSummary(BaseModel):
     tier2_ran: bool = False
 
 
+class MedicineEnrichment(BaseModel):
+    """FDA-verified manufacturer/strength/original pack size for one medicine,
+    surfaced alongside (not replacing) the OCR-extracted values on
+    `MedicineInput.manufacturer`/`.strength`/`.pack_size`."""
+
+    model_config = ConfigDict(extra="forbid")
+    medicine_index: int
+    ndc: str
+    found_in_fda: bool
+    manufacturer: str | None = None        # FDA labeler_name
+    strength: str | None = None            # FDA active_ingredients, joined
+    original_pack_size: str | None = None  # e.g. "8.5 mL" / "120 SPRAY, METERED"
+    dosage_form: str | None = None
+    brand_name: str | None = None
+    generic_name: str | None = None
+
+
 class ValidationReport(BaseModel):
     model_config = ConfigDict(extra="forbid")
     summary: ValidationSummary
     alerts: list[Alert]
     grand_total: GrandTotalRecompute | None = None
     per_patient: list[PerPatientTotal] = Field(default_factory=list)
+    medicine_enrichment: list[MedicineEnrichment] = Field(default_factory=list)

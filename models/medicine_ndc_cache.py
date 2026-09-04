@@ -14,8 +14,9 @@ Directory at all).
 """
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, DateTime, String, Text, func
+from sqlalchemy import Boolean, DateTime, Numeric, String, Text, func
 from sqlalchemy.dialects.mysql import MEDIUMTEXT
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -39,6 +40,15 @@ class MedicineNdcCache(AuditMixin, Base):
 
     package_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_unit_of_use: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+    # Manufacturer/strength/pack-size — surfaced on validate (Module A/B/C
+    # enrichment) alongside the OCR-extracted values on Medicine. pack_size_qty
+    # is the numeric fill quantity parsed from `package_description` (see
+    # services/validation/fda_client.parse_pack_size); None when unparseable.
+    labeler_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    strength_text: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    pack_size_qty: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    pack_size_uom: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     found_in_fda: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     raw_payload: Mapped[str | None] = mapped_column(MEDIUMTEXT, nullable=True)

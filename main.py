@@ -22,8 +22,10 @@ from routes.inventory import router as inventory_router
 from routes.invoice import router as invoice_router
 from routes.invoice_save import router as invoice_save_router
 from routes.monitor import router as monitor_router
+from routes.ndc_search import router as ndc_search_router
 from routes.ownership_transfer import router as ownership_transfer_router
 from routes.pharmacy_purchase_report import router as report_router
+from routes.pharmacy_reset import router as pharmacy_reset_router
 from routes.reconciliation import router as reconciliation_router
 from routes.refills import router as refills_router
 from routes.stripe_webhook import router as stripe_webhook_router
@@ -210,6 +212,8 @@ app.include_router(subscription_router)
 app.include_router(admin_subscription_router)
 app.include_router(reconciliation_router)
 app.include_router(temperature_devices_router)
+app.include_router(pharmacy_reset_router)
+app.include_router(ndc_search_router)
 app.include_router(temperature_logs_router)
 app.include_router(stripe_webhook_router)
 app.include_router(ownership_transfer_router)
