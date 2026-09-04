@@ -70,7 +70,7 @@ def _is_unit_of_use(dosage_form: str | None, package_description: str | None) ->
 
 
 _PACK_SEG_RE = re.compile(
-    r"^\s*(\d+(?:\.\d+)?)\s+([A-Za-z][A-Za-z,\-\s]*?)\s+in\s+\d+(?:\.\d+)?\s+[A-Za-z].*$",
+    r"^\s*(\d+(?:\.\d+)?|\.\d+)\s+([A-Za-z][A-Za-z,\-\s]*?)\s+in\s+(?:\d+(?:\.\d+)?|\.\d+)\s+[A-Za-z].*$",
     re.IGNORECASE,
 )
 
