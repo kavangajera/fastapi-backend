@@ -34,7 +34,9 @@ router = APIRouter(tags=["Reconciliation"])
     description=(
         "Per NDC, compares purchased quantity (invoices) against billed-out "
         "quantity (dispense reports). `status` is OVER_BILLED (dispensed > "
-        "invoiced), UNDER_DISPENSED (invoiced > dispensed), or MATCHED.\n\n"
+        "invoiced), UNDER_DISPENSED (invoiced > dispensed), MATCHED, or "
+        "NEVER_INVOICED (dispensed but no invoice line item exists for this "
+        "NDC at all — `message` on that row reads 'No Invoice Record Found').\n\n"
         "🔒 **Requires the Ultimate plan** (`invoice_billed_cross_reconciliation`)."
     ),
 )

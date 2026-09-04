@@ -53,6 +53,10 @@ async def get_or_fetch(
         is_unit_of_use=stmt.inserted.is_unit_of_use,
         found_in_fda=stmt.inserted.found_in_fda,
         raw_payload=stmt.inserted.raw_payload,
+        labeler_name=stmt.inserted.labeler_name,
+        strength_text=stmt.inserted.strength_text,
+        pack_size_qty=stmt.inserted.pack_size_qty,
+        pack_size_uom=stmt.inserted.pack_size_uom,
     )
     await session.execute(stmt)
     await session.commit()

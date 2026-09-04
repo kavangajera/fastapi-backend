@@ -244,7 +244,7 @@ This is where FDA gets called (via the shared cache — see §6). Per NDC:
 
 | Code | Severity | Rule |
 |---|---|---|
-| `NDC_NOT_FOUND` | WARNING | the NDC isn't in the FDA Drug NDC Directory (often a medical device — sensors, strips, lancets — that lives in the FDA Device DB instead, or a very recent launch not yet indexed) |
+| `NDC_NOT_FOUND` | WARNING | the NDC isn't in the FDA Drug NDC Directory — may be a medical device/supply (sensors, strips, lancets — lives in the FDA Device DB instead), a discontinued/delisted product, or a very recent launch not yet indexed. The alert's `suggestion` field uses plain, non-technical language aimed at pharmacy staff rather than jargon. |
 | `DRUG_DISPENSED_BEFORE_MARKETED` | WARNING | a dispense's `date_filled` is earlier than the FDA `marketing_start_date` for that NDC |
 | `DRUG_DISPENSED_AFTER_DISCONTINUED` | **ERROR** | a dispense's `date_filled` is later than the FDA `marketing_end_date` |
 | `NDC_LISTING_EXPIRES_SOON` | INFO | `marketing_end_date` is within `NDC_LISTING_EXPIRY_INFO_DAYS` (default 365) of today |

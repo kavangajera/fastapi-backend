@@ -33,7 +33,8 @@ from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.config import settings
-from schemas.validation import Alert, ValidationReport
+from schemas.validation import Alert, MedicineEnrichment, ValidationReport
+from services.validation.date_utils import parse_yyyymmdd
 from services.validation.ndc_cache import get_or_fetch
 from services.validation.plan_gate import has, plan_locked_alert
 from services.validation.severity import summarize
@@ -45,15 +46,6 @@ def _to_decimal(value: Any) -> Decimal | None:
     try:
         return Decimal(str(value).replace(",", "").replace("$", "").strip())
     except (InvalidOperation, ValueError):
-        return None
-
-
-def _parse_yyyymmdd(s: str | None) -> date | None:
-    if not s or len(s) != 8 or not s.isdigit():
-        return None
-    try:
-        return date(int(s[:4]), int(s[4:6]), int(s[6:8]))
-    except ValueError:
         return None
 
 
@@ -104,13 +96,17 @@ def _module_a(
                 medicine_index=mi,
                 ndc=ndc11,
                 actual=med.get("drug_name", ""),
-                suggestion="Verify NDC manually; devices live in the FDA Device DB, not Drug.",
+                suggestion=(
+                    "Double-check this NDC on the package or invoice — it may be a "
+                    "medical device or supply rather than a drug, which is normal "
+                    "and not an error."
+                ),
             )
         )
         return
 
-    start_dt = _parse_yyyymmdd(cache_row.marketing_start_date)
-    end_dt = _parse_yyyymmdd(cache_row.marketing_end_date)
+    start_dt = parse_yyyymmdd(cache_row.marketing_start_date)
+    end_dt = parse_yyyymmdd(cache_row.marketing_end_date)
     
     for di, disp in enumerate(med.get("dispenses", [])):
         date_filled_str = disp.get("date_filled")
@@ -204,11 +200,45 @@ def _module_c(mi: int, ndc11: str, med: dict, cache_row, alerts: list[Alert]) ->
         return  # nothing to compare against
     if not cache_row.is_unit_of_use:
         return  # bulk-dispensed: no flag
+    pack_qty = cache_row.pack_size_qty
+    pack_uom = cache_row.pack_size_uom or "unit(s)"
+
     for di, disp in enumerate(med.get("dispenses", [])):
         qty = _to_decimal(disp.get("qty_disp"))
         if qty is None:
             continue
-        if qty != qty.to_integral_value():
+
+        if pack_qty and pack_qty > 0:
+            # Real numeric pack size parsed from FDA package_description
+            # (e.g. "8.5 mL" for an injectable, "120 SPRAY, METERED" for a
+            # nasal spray) — reconcile qty_disp as a whole multiple of it.
+            if qty % pack_qty != 0:
+                alerts.append(
+                    Alert(
+                        module="C",
+                        code="PACK_SIZE_NOT_WHOLE_MULTIPLE",
+                        severity="ERROR",
+                        message=(
+                            f"{cache_row.dosage_form or 'Unit-of-use product'} original "
+                            f"pack size is {pack_qty} {pack_uom}; qty_disp={qty} is not "
+                            "a whole multiple of it."
+                        ),
+                        medicine_index=mi,
+                        dispense_index=di,
+                        ndc=ndc11,
+                        rx_no=disp.get("rx_no"),
+                        field="qty_disp",
+                        actual=str(qty),
+                        expected=f"multiple of {pack_qty} {pack_uom}",
+                        suggestion=(
+                            f"Set qty_disp to a whole multiple of the {pack_qty} "
+                            f"{pack_uom} original pack size."
+                        ),
+                    )
+                )
+        elif qty != qty.to_integral_value():
+            # No confidently-parsed numeric pack size for this NDC — fall
+            # back to the original whole-number-of-packages check unchanged.
             alerts.append(
                 Alert(
                     module="C",
@@ -269,6 +299,7 @@ async def validate_tier2(
     report_data: dict,
     tier1_report: ValidationReport | None = None,
     granted: set[str] | None = None,
+    disabled_modules: set[str] | None = None,
 ) -> ValidationReport:
     """
     Tier-1 + FDA-dependent checks merged into one ValidationReport.
@@ -279,19 +310,28 @@ async def validate_tier2(
     `granted` = the store's ``Plan.features`` flag set (``None`` → run all).
     Modules A/B/C are gated per plan; when none are granted the FDA lookup is
     skipped entirely (saving ~1–2 s/NDC). Skipped modules emit ``PLAN_LOCKED``.
+
+    `disabled_modules` = a per-request opt-out set (module letters),
+    independent of plan gating — see `validate_tier1` for the same contract.
+    A user-disabled module never emits a `PLAN_LOCKED` marker either.
     """
+    disabled = disabled_modules or set()
     if tier1_report is None:
         from services.validation.tier1 import validate_tier1
 
-        tier1_report = validate_tier1(report_data, granted=granted)
+        tier1_report = validate_tier1(report_data, granted=granted, disabled_modules=disabled)
 
     alerts: list[Alert] = list(tier1_report.alerts)
     medicines: list[dict] = report_data.get("medicines") or []
     today = datetime.utcnow().date()
+    enrichment: list[MedicineEnrichment] = []
 
-    need_a = has(granted, "discontinued_drug_detection")   # Module A (Ultimate)
-    need_b = has(granted, "ndc_claim_mismatch_checks")     # Module B (Ultimate)
-    need_c = has(granted, "pack_size_billed_reconciliation")  # Module C (Advanced)
+    plan_grant_a = has(granted, "discontinued_drug_detection")   # Module A (Ultimate)
+    plan_grant_b = has(granted, "ndc_claim_mismatch_checks")     # Module B (Ultimate)
+    plan_grant_c = has(granted, "pack_size_billed_reconciliation")  # Module C (Advanced)
+    need_a = plan_grant_a and "A" not in disabled
+    need_b = plan_grant_b and "B" not in disabled
+    need_c = plan_grant_c and "C" not in disabled
 
     # Only pay for FDA lookups if at least one FDA-dependent module is granted.
     if need_a or need_b or need_c:
@@ -322,14 +362,34 @@ async def validate_tier2(
                 _module_b(mi, ndc, drug_name, cache_row, alerts)
             if need_c:
                 _module_c(mi, ndc, med, cache_row, alerts)
-            _module_d(mi, ndc, med, alerts)
+            if "D" not in disabled:
+                _module_d(mi, ndc, med, alerts)
 
-    # One lock marker per module the plan doesn't include.
-    if not need_a:
+            enrichment.append(
+                MedicineEnrichment(
+                    medicine_index=mi,
+                    ndc=ndc,
+                    found_in_fda=bool(cache_row and cache_row.found_in_fda),
+                    manufacturer=cache_row.labeler_name if cache_row else None,
+                    strength=cache_row.strength_text if cache_row else None,
+                    original_pack_size=(
+                        f"{cache_row.pack_size_qty} {cache_row.pack_size_uom}".strip()
+                        if cache_row and cache_row.pack_size_qty
+                        else None
+                    ),
+                    dosage_form=cache_row.dosage_form if cache_row else None,
+                    brand_name=cache_row.brand_name if cache_row else None,
+                    generic_name=cache_row.generic_name if cache_row else None,
+                )
+            )
+
+    # One lock marker per module the plan doesn't include — never emitted
+    # for a module the user disabled themselves (that's not a paywall).
+    if not plan_grant_a and "A" not in disabled:
         alerts.append(plan_locked_alert("A", "discontinued_drug_detection"))
-    if not need_b:
+    if not plan_grant_b and "B" not in disabled:
         alerts.append(plan_locked_alert("B", "ndc_claim_mismatch_checks"))
-    if not need_c:
+    if not plan_grant_c and "C" not in disabled:
         alerts.append(plan_locked_alert("C", "pack_size_billed_reconciliation"))
 
     return ValidationReport(
@@ -337,4 +397,5 @@ async def validate_tier2(
         alerts=alerts,
         grand_total=tier1_report.grand_total,
         per_patient=tier1_report.per_patient,
+        medicine_enrichment=enrichment,
     )

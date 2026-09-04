@@ -17,7 +17,8 @@ class ReconciliationRow(BaseModel):
     invoiced_qty: str   # total purchased (from invoices)
     dispensed_qty: str  # total billed out (from dispense reports)
     delta: str          # dispensed − invoiced (positive = billed more than bought)
-    status: str         # MATCHED / OVER_BILLED / UNDER_DISPENSED
+    status: str         # MATCHED / OVER_BILLED / UNDER_DISPENSED / NEVER_INVOICED
+    message: str | None = None  # set only for NEVER_INVOICED rows
 
 
 class ReconciliationSummary(BaseModel):
@@ -27,6 +28,7 @@ class ReconciliationSummary(BaseModel):
     over_billed: int
     under_dispensed: int
     matched: int
+    never_invoiced: int
 
 
 class ReconciliationResponse(BaseModel):

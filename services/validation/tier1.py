@@ -213,7 +213,9 @@ def _check_days_supply(medicines: list[dict], alerts: list[Alert]) -> None:
 # ─────────────────────────────────────────────────────────────────────
 
 
-def _check_repeat(medicines: list[dict], alerts: list[Alert]) -> None:
+def _check_repeat(
+    medicines: list[dict], alerts: list[Alert], emit_e: bool = True, emit_f: bool = True
+) -> None:
     by_patient_ndc: dict[tuple[str, str], list[tuple[int, int, dict]]] = defaultdict(list)
     by_patient_ndc_ins: dict[tuple[str, str, str | None], list[tuple[int, int, dict]]] = (
         defaultdict(list)
@@ -229,42 +231,44 @@ def _check_repeat(medicines: list[dict], alerts: list[Alert]) -> None:
             by_patient_ndc[(pk, ndc)].append((mi, di, disp))
             by_patient_ndc_ins[(pk, ndc, ins)].append((mi, di, disp))
 
-    for (pk, ndc), entries in by_patient_ndc.items():
-        if len(entries) >= 2:
-            alerts.append(
-                Alert(
-                    module="E",
-                    code="REPEAT_PATIENT_DRUG",
-                    severity="WARNING",
-                    message=(f"Same patient appears {len(entries)} times for NDC {ndc}."),
-                    medicine_index=entries[0][0],
-                    dispense_index=entries[0][1],
-                    ndc=ndc,
-                    patient_key=pk,
-                    actual=[e[2].get("rx_no") for e in entries],
-                    suggestion=("Confirm these are legitimate refills, not duplicates."),
+    if emit_e:
+        for (pk, ndc), entries in by_patient_ndc.items():
+            if len(entries) >= 2:
+                alerts.append(
+                    Alert(
+                        module="E",
+                        code="REPEAT_PATIENT_DRUG",
+                        severity="WARNING",
+                        message=(f"Same patient appears {len(entries)} times for NDC {ndc}."),
+                        medicine_index=entries[0][0],
+                        dispense_index=entries[0][1],
+                        ndc=ndc,
+                        patient_key=pk,
+                        actual=[e[2].get("rx_no") for e in entries],
+                        suggestion=("Confirm these are legitimate refills, not duplicates."),
+                    )
                 )
-            )
 
-    for (pk, ndc, ins), entries in by_patient_ndc_ins.items():
-        if len(entries) >= 2:
-            alerts.append(
-                Alert(
-                    module="F",
-                    code="REPEAT_PATIENT_DRUG_INSURANCE",
-                    severity="ERROR",
-                    message=(
-                        f"Same patient + NDC {ndc} + insurance {ins} appears "
-                        f"{len(entries)} times — strongest duplicate-billing signal."
-                    ),
-                    medicine_index=entries[0][0],
-                    dispense_index=entries[0][1],
-                    ndc=ndc,
-                    patient_key=pk,
-                    actual=[e[2].get("rx_no") for e in entries],
-                    suggestion=("Investigate. Reverse one of the claims if duplicate."),
+    if emit_f:
+        for (pk, ndc, ins), entries in by_patient_ndc_ins.items():
+            if len(entries) >= 2:
+                alerts.append(
+                    Alert(
+                        module="F",
+                        code="REPEAT_PATIENT_DRUG_INSURANCE",
+                        severity="ERROR",
+                        message=(
+                            f"Same patient + NDC {ndc} + insurance {ins} appears "
+                            f"{len(entries)} times — strongest duplicate-billing signal."
+                        ),
+                        medicine_index=entries[0][0],
+                        dispense_index=entries[0][1],
+                        ndc=ndc,
+                        patient_key=pk,
+                        actual=[e[2].get("rx_no") for e in entries],
+                        suggestion=("Investigate. Reverse one of the claims if duplicate."),
+                    )
                 )
-            )
 
 
 # ─────────────────────────────────────────────────────────────────────
@@ -309,14 +313,22 @@ def _check_zero_refills(medicines: list[dict], alerts: list[Alert]) -> None:
 
 
 def _grand_total_recompute(
-    medicines: list[dict], grand_total_printed: dict, alerts: list[Alert]
+    medicines: list[dict],
+    grand_total_printed: dict,
+    alerts: list[Alert],
+    emit_alerts: bool = True,
 ) -> tuple[GrandTotalRecompute, list[PerPatientTotal]]:
     rx_count = 0
     sum_price = Decimal("0")
     sum_ins_paid = Decimal("0")
     sum_qty = Decimal("0")
 
-    per_patient_acc: dict[str, dict] = defaultdict(
+    # Keyed by (patient_key, canonical_insurance) — not patient_key alone —
+    # so dispenses under differing insurance for the same patient are never
+    # blended into one total. Multiple rx_no's under the SAME insurance
+    # still sum together (a legitimate "how much does this payer owe for
+    # this patient" total).
+    per_patient_acc: dict[tuple[str, str | None], dict] = defaultdict(
         lambda: {
             "rx_count": 0,
             "price": Decimal("0"),
@@ -338,7 +350,8 @@ def _grand_total_recompute(
             pk = derive_patient_key(
                 disp.get("pat_name"), disp.get("pat_phone"), disp.get("pat_addr")
             )
-            slot = per_patient_acc[pk]
+            insurance = canonical_insurance(disp.get("ins_code"))
+            slot = per_patient_acc[(pk, insurance)]
             slot["rx_count"] += 1
             slot["price"] += price
             slot["ins_paid"] += ins
@@ -363,7 +376,7 @@ def _grand_total_recompute(
         delta_total_price=delta_price,
     )
 
-    if delta_rx is not None and delta_rx != 0:
+    if emit_alerts and delta_rx is not None and delta_rx != 0:
         alerts.append(
             Alert(
                 module="G",
@@ -377,7 +390,7 @@ def _grand_total_recompute(
                 actual=str(printed_rx),
             )
         )
-    if printed_price is not None and printed_price != sum_price:
+    if emit_alerts and printed_price is not None and printed_price != sum_price:
         alerts.append(
             Alert(
                 module="G",
@@ -390,37 +403,41 @@ def _grand_total_recompute(
         )
 
     # Unpaid lines (price > 0, ins_paid == 0).
-    for mi, med in enumerate(medicines):
-        for di, disp in enumerate(med.get("dispenses", [])):
-            price = _to_decimal(disp.get("price")) or Decimal("0")
-            ins = _to_decimal(disp.get("ins_paid")) or Decimal("0")
-            if price > 0 and ins == 0:
-                alerts.append(
-                    Alert(
-                        module="G",
-                        code="UNPAID_LINE",
-                        severity="WARNING",
-                        message=(
-                            f"price={price} but ins_paid=0 (ins_code={disp.get('ins_code')})."
-                        ),
-                        medicine_index=mi,
-                        dispense_index=di,
-                        ndc=med.get("ndc"),
-                        rx_no=disp.get("rx_no"),
-                        suggestion="Confirm cash sale vs insurance rejection.",
+    if emit_alerts:
+        for mi, med in enumerate(medicines):
+            for di, disp in enumerate(med.get("dispenses", [])):
+                price = _to_decimal(disp.get("price")) or Decimal("0")
+                ins = _to_decimal(disp.get("ins_paid")) or Decimal("0")
+                if price > 0 and ins == 0:
+                    alerts.append(
+                        Alert(
+                            module="G",
+                            code="UNPAID_LINE",
+                            severity="WARNING",
+                            message=(
+                                f"price={price} but ins_paid=0 (ins_code={disp.get('ins_code')})."
+                            ),
+                            medicine_index=mi,
+                            dispense_index=di,
+                            ndc=med.get("ndc"),
+                            rx_no=disp.get("rx_no"),
+                            suggestion="Confirm cash sale vs insurance rejection.",
+                        )
                     )
-                )
 
     per_patient = [
         PerPatientTotal(
             patient_key=pk,
             patient_label=v["label"],
+            insurance=insurance,
             rx_count=v["rx_count"],
             total_price=str(v["price"]),
             total_ins_paid=str(v["ins_paid"]),
             patient_responsibility=str(v["price"] - v["ins_paid"]),
         )
-        for pk, v in sorted(per_patient_acc.items(), key=lambda kv: kv[1]["price"], reverse=True)
+        for (pk, insurance), v in sorted(
+            per_patient_acc.items(), key=lambda kv: kv[1]["price"], reverse=True
+        )
     ]
 
     return gt, per_patient
@@ -432,47 +449,67 @@ def _grand_total_recompute(
 
 
 def validate_tier1(
-    report_data: dict, granted: set[str] | None = None
+    report_data: dict,
+    granted: set[str] | None = None,
+    disabled_modules: set[str] | None = None,
 ) -> ValidationReport:
     """Run the pure-data checks the store's plan is entitled to.
 
     ``granted`` = the store's ``Plan.features`` flag set. ``None`` → run every
     module (Kafka preview / tests). Skipped modules emit a ``PLAN_LOCKED``
     marker instead of running. See ``plan_gate`` for the flag mapping.
+
+    ``disabled_modules`` = a per-request opt-out set (module letters A-H),
+    independent of plan gating. A disabled module is skipped entirely —
+    including its ``PLAN_LOCKED`` marker, since a user who turned a category
+    off shouldn't get nagged to upgrade for it. ``"FIELD"`` cannot be
+    disabled (enforced by ``DispenseSaveRequest``'s validator, not here).
     """
     alerts: list[Alert] = []
     medicines: list[dict] = report_data.get("medicines") or []
     grand_total_printed: dict = report_data.get("grand_total") or {}
+    disabled = disabled_modules or set()
 
     # FIELD sanity ALWAYS runs — its ERRORs (malformed / duplicate NDC) protect
     # the inventory-subtraction math on save, independent of any paid feature.
     _check_field_sanity(medicines, alerts)
 
     # Module D — days-supply validation (Ultimate).
-    if has(granted, "days_supply_validation"):
-        _check_days_supply(medicines, alerts)
-    else:
-        alerts.append(plan_locked_alert("D", "days_supply_validation"))
+    if "D" not in disabled:
+        if has(granted, "days_supply_validation"):
+            _check_days_supply(medicines, alerts)
+        else:
+            alerts.append(plan_locked_alert("D", "days_supply_validation"))
 
     # Modules E + F — repeat / duplicate-claim (Advanced, refill analysis).
     if has(granted, "refill_analysis_billings"):
-        _check_repeat(medicines, alerts)
+        _check_repeat(
+            medicines, alerts, emit_e=("E" not in disabled), emit_f=("F" not in disabled)
+        )
     else:
-        alerts.append(plan_locked_alert("E", "refill_analysis_billings"))
-        alerts.append(plan_locked_alert("F", "refill_analysis_billings"))
+        if "E" not in disabled:
+            alerts.append(plan_locked_alert("E", "refill_analysis_billings"))
+        if "F" not in disabled:
+            alerts.append(plan_locked_alert("F", "refill_analysis_billings"))
 
     # Module H — zero-refills worklist (Advanced, refill analysis).
-    if has(granted, "refill_analysis_billings"):
-        _check_zero_refills(medicines, alerts)
-    else:
-        alerts.append(plan_locked_alert("H", "refill_analysis_billings"))
+    if "H" not in disabled:
+        if has(granted, "refill_analysis_billings"):
+            _check_zero_refills(medicines, alerts)
+        else:
+            alerts.append(plan_locked_alert("H", "refill_analysis_billings"))
 
-    # Module G — billing totals + per-patient analytics (Advanced).
+    # Module G — billing totals + per-patient analytics (Advanced). The
+    # totals themselves are always computed/returned even when "G" is
+    # disabled — only the alert noise is suppressed.
     if has(granted, "top_quantity_drug_report"):
-        gt, per_patient = _grand_total_recompute(medicines, grand_total_printed, alerts)
+        gt, per_patient = _grand_total_recompute(
+            medicines, grand_total_printed, alerts, emit_alerts=("G" not in disabled)
+        )
     else:
         gt, per_patient = None, []
-        alerts.append(plan_locked_alert("G", "top_quantity_drug_report"))
+        if "G" not in disabled:
+            alerts.append(plan_locked_alert("G", "top_quantity_drug_report"))
 
     summary = summarize(alerts, tier1=True, tier2=False)
     return ValidationReport(summary=summary, alerts=alerts, grand_total=gt, per_patient=per_patient)
