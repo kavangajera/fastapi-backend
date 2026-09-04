@@ -1,15 +1,15 @@
 """Add labeler_name / strength_text / pack_size_qty / pack_size_uom to medicine_ndc_cache.
 
-Revision ID: a1b2c3d4e5f6
-Revises: f3a4b5c6d7e8
+Revision ID: d9e0f1a2b3c4
+Revises: c2d3e4f5a6b7
 """
 
 import sqlalchemy as sa
 
 from alembic import op
 
-revision = "a1b2c3d4e5f6"
-down_revision = "f3a4b5c6d7e8"
+revision = "d9e0f1a2b3c4"
+down_revision = "c2d3e4f5a6b7"
 branch_labels = None
 depends_on = None
 
